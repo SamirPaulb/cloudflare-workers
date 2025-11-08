@@ -186,8 +186,6 @@ export async function processBatchWithRetry(items, processor, options = {}) {
     const batch = items.slice(i, Math.min(i + batchSize, items.length));
 
     // Process batch items concurrently (with concurrency limit)
-    const batchPromises = [];
-
     for (let j = 0; j < batch.length; j += maxConcurrent) {
       const concurrent = batch.slice(j, Math.min(j + maxConcurrent, batch.length));
 
@@ -220,7 +218,8 @@ export async function processBatchWithRetry(items, processor, options = {}) {
         results.totalProcessed++;
       });
 
-      batchPromises.push(...await Promise.all(concurrentPromises));
+      // Wait for all concurrent promises to complete
+      await Promise.all(concurrentPromises);
     }
 
     // Add delay between batches to avoid rate limiting

@@ -1,10 +1,10 @@
-# Cloudflare Workers Newsletter System
+# Cloudflare Workers Newsletter & Contact Management System
 
-A fully modular, serverless newsletter and contact form system built on Cloudflare Workers with direct SMTP email delivery.
+A fully modular, serverless newsletter and contact form management system built on Cloudflare Workers with multiple email provider support.
 
 ## 🚀 Features
 
-- **Direct Email Delivery**: Send emails via Gmail SMTP (using worker-mailer) or Cloudflare Email Routing
+- **Multiple Email Providers**: Support for Gmail SMTP (via worker-mailer), MailerLite API, or Cloudflare Email Routing
 - **Newsletter Management**: Automated RSS feed monitoring and batch email delivery
 - **Bot Protection**: Cloudflare Turnstile integration for all forms
 - **KV Storage**: Efficient data persistence with Cloudflare KV

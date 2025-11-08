@@ -11,35 +11,86 @@ export async function runCleanup(env, config) {
   console.log('Starting cleanup tasks...');
 
   const results = {
-    cleanedPrefixes: {},
-    cleanedQueues: 0,
+    cleanedTotal: 0,
+    keptPrefixes: [],
+    cleanedPrefixes: [],
     timestamp: new Date().toISOString()
   };
 
   try {
-    // Clean up rate limit entries (temporary data)
-    results.cleanedPrefixes.ratelimit = await cleanupPrefix(env, config.PREFIX_RATELIMIT);
-    console.log(`Cleaned ${results.cleanedPrefixes.ratelimit} rate limit entries`);
+    // Define what prefixes to KEEP (everything else will be deleted)
+    const keepPrefixes = [
+      config.PREFIX_SUBSCRIBER,        // Keep all subscribers
+      config.PREFIX_CONTACT,          // Keep all contacts
+      config.PREFIX_NEWSLETTER_SENT,  // Keep newsletter sent records
+      config.PREFIX_NEWSLETTER_SENT_URL, // Keep newsletter sent URLs
+      config.KEEP_PREFIX_MAINTENANCE,  // Keep maintenance metadata
+      config.KEEP_PREFIX_DAILY,        // Keep daily run metadata
+      config.KEEP_PREFIX_DEPLOYMENT,   // Keep deployment info
+      config.KEEP_PREFIX_STATS         // Keep stats data
+    ];
 
-    // Clean up captcha entries (temporary data)
-    results.cleanedPrefixes.captcha = await cleanupPrefix(env, config.PREFIX_CAPTCHA);
-    console.log(`Cleaned ${results.cleanedPrefixes.captcha} captcha entries`);
+    // Get all KV keys and clean up those not in keep list
+    let cursor = null;
+    let hasMore = true;
+    let processed = 0;
+    let deleted = 0;
 
-    // Clean up bot detection entries (temporary data)
-    results.cleanedPrefixes.bot = await cleanupPrefix(env, config.PREFIX_BOT);
-    console.log(`Cleaned ${results.cleanedPrefixes.bot} bot entries`);
+    console.log('Prefixes to keep:', keepPrefixes);
 
-    results.cleanedPrefixes.botDetect = await cleanupPrefix(env, config.PREFIX_BOT_DETECT);
-    console.log(`Cleaned ${results.cleanedPrefixes.botDetect} bot-detect entries`);
+    while (hasMore) {
+      const list = await env.KV.list({
+        limit: 1000,
+        cursor
+      });
 
-    // Clean up old completed queues (only completed ones, older than 45 days)
-    results.cleanedQueues = await cleanupOldQueues(env, config);
-    console.log(`Cleaned ${results.cleanedQueues} old queue entries`);
+      if (!list || !list.keys) break;
 
-    // NOTE: Subscribers and contacts are kept forever per user requirements
-    // They are only removed when users explicitly unsubscribe
+      for (const key of list.keys) {
+        processed++;
 
-    console.log('Cleanup tasks completed successfully');
+        // Check if this key should be kept
+        let shouldKeep = false;
+        for (const keepPrefix of keepPrefixes) {
+          if (key.name.startsWith(keepPrefix)) {
+            shouldKeep = true;
+            break;
+          }
+        }
+
+        if (!shouldKeep) {
+          try {
+            await env.KV.delete(key.name);
+            deleted++;
+
+            // Track which prefix was cleaned
+            const prefix = key.name.split(':')[0];
+            if (!results.cleanedPrefixes.includes(prefix)) {
+              results.cleanedPrefixes.push(prefix);
+            }
+
+            console.log(`Deleted: ${key.name}`);
+          } catch (error) {
+            console.error(`Error deleting ${key.name}:`, error);
+          }
+        } else {
+          // Track which prefix was kept
+          const prefix = key.name.split(':')[0];
+          if (!results.keptPrefixes.includes(prefix)) {
+            results.keptPrefixes.push(prefix);
+          }
+        }
+      }
+
+      hasMore = !list.list_complete;
+      cursor = list.cursor;
+    }
+
+    results.cleanedTotal = deleted;
+    console.log(`Cleanup completed: Processed ${processed} keys, deleted ${deleted} keys`);
+    console.log(`Kept prefixes: ${results.keptPrefixes.join(', ')}`);
+    console.log(`Cleaned prefixes: ${results.cleanedPrefixes.join(', ')}`);
+
     return results;
   } catch (error) {
     console.error('Error during cleanup:', error);
@@ -48,64 +99,6 @@ export async function runCleanup(env, config) {
   }
 }
 
-/**
- * Clean up old and completed queues
- */
-async function cleanupOldQueues(env, config) {
-  let deleted = 0;
-  let cursor = null;
-  let hasMore = true;
-
-  try {
-    while (hasMore) {
-      const list = await env.KV.list({
-        prefix: config.PREFIX_EMAIL_QUEUE,
-        limit: 1000,
-        cursor
-      });
-
-      if (!list || !list.keys) break;
-
-      for (const key of list.keys) {
-        try {
-          const raw = await env.KV.get(key.name);
-
-          if (!raw) {
-            // Delete empty entries
-            await env.KV.delete(key.name);
-            deleted++;
-            continue;
-          }
-
-          const queue = JSON.parse(raw);
-          const createdAtMs = queue.createdAt ? new Date(queue.createdAt).getTime() : 0;
-          const staleCutoff = Date.now() - 45 * 24 * 60 * 60 * 1000; // 45 days
-
-          // Delete completed or stale queues
-          if (queue.status === 'completed' || (createdAtMs && createdAtMs < staleCutoff)) {
-            await env.KV.delete(key.name);
-            deleted++;
-            console.log(`Deleted ${queue.status} queue: ${key.name}`);
-          }
-        } catch (error) {
-          console.error(`Error processing queue ${key.name}:`, error);
-          // Try to delete corrupted entries
-          try {
-            await env.KV.delete(key.name);
-            deleted++;
-          } catch {}
-        }
-      }
-
-      hasMore = !list.list_complete;
-      cursor = list.cursor;
-    }
-  } catch (error) {
-    console.error('Error cleaning up queues:', error);
-  }
-
-  return deleted;
-}
 
 /**
  * Get maintenance status
@@ -167,13 +160,13 @@ export async function getMaintenanceStatus(env, config) {
     }
 
     // Get last cleanup info
-    const lastCleanup = await env.KV.get('maintenance:last-cleanup');
+    const lastCleanup = await env.KV.get(`${config.KEEP_PREFIX_MAINTENANCE}cleanup`);
     if (lastCleanup) {
       status.lastCleanup = JSON.parse(lastCleanup);
     }
 
     // Get last backup info
-    const lastBackup = await env.KV.get('maintenance:last-backup');
+    const lastBackup = await env.KV.get(`${config.KEEP_PREFIX_MAINTENANCE}backup`);
     if (lastBackup) {
       status.lastBackup = JSON.parse(lastBackup);
     }

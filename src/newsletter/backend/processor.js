@@ -176,7 +176,11 @@ async function processQueueBatch(env, config, queueKey, queue) {
       return { success: true, waiting: true };
     }
 
-    const offset = Array.isArray(queue.sentTo) ? queue.sentTo.length : 0;
+    // Ensure arrays are initialized
+    queue.sentTo = queue.sentTo || [];
+    queue.failedRecipients = queue.failedRecipients || [];
+
+    const offset = queue.sentTo.length;
     const total = Array.isArray(queue.subscribers) ? queue.subscribers.length : 0;
 
     if (!total || offset >= total) {
@@ -226,11 +230,9 @@ async function processQueueBatch(env, config, queueKey, queue) {
 
       // If batch has failed too many times, move failed recipients to a separate list
       if (queue.batchRetryCount >= 3) {
-        queue.failedRecipients = queue.failedRecipients || [];
         queue.failedRecipients.push(...nextBatch);
 
         // Skip these recipients and continue with the rest
-        queue.sentTo = queue.sentTo || [];
         queue.sentTo.push(...nextBatch); // Mark as "processed" even though failed
 
         // Reset retry count for next batch
@@ -238,7 +240,7 @@ async function processQueueBatch(env, config, queueKey, queue) {
 
         // Store failure details
         queue.lastError = {
-          message: result.error.message,
+          message: result.error?.message || 'Unknown error',
           batch: `${offset}-${offset + nextBatch.length}`,
           timestamp: new Date().toISOString()
         };
@@ -262,7 +264,6 @@ async function processQueueBatch(env, config, queueKey, queue) {
 
       // Handle partial failures
       if (sentResult.totalFailed > 0) {
-        queue.failedRecipients = queue.failedRecipients || [];
         const failedRecipients = nextBatch.slice(sentResult.totalSent);
         queue.failedRecipients.push(...failedRecipients);
         console.log(`Partial batch failure: ${sentResult.totalFailed} recipients failed`);

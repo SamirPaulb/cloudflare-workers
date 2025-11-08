@@ -27,13 +27,14 @@ export class WorkerEmailProvider {
         replyTo: replyTo || this.config.EMAIL_REPLY_TO
       });
 
-      // Send via Cloudflare Email service
-      const result = await this.env.send(message);
+      // Note: Cloudflare Email Workers can only receive emails, not send them directly
+      // This would need to be sent via an external SMTP service or API
+      // For now, return an error indicating this provider is not fully implemented
 
       return {
-        success: true,
-        message: `Email sent successfully to ${Array.isArray(to) ? to.length : 1} recipient(s)`,
-        messageId: result.messageId
+        success: false,
+        error: 'Worker Email provider is not fully implemented. Please use Gmail provider instead.',
+        message: 'Cloudflare Email Workers can only receive emails, not send them directly'
       };
     } catch (error) {
       console.error('Worker Email send error:', error);
@@ -68,13 +69,14 @@ export class WorkerEmailProvider {
           text: text || this.stripHtml(html)
         });
 
-        const result = await this.env.send(message);
-
-        results.push({
-          batch: batch.length,
-          success: true,
-          messageId: result.messageId
-        });
+        // Cloudflare Email Workers cannot send emails
+        return {
+          success: false,
+          error: 'Worker Email provider is not fully implemented. Please use Gmail provider instead.',
+          message: 'Cloudflare Email Workers can only receive emails, not send them directly',
+          totalSent: 0,
+          totalFailed: recipients.length
+        };
 
         // Add delay between batches
         if (i + batchSize < recipients.length) {

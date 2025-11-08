@@ -32,7 +32,7 @@ export async function performBackup(env, config) {
     results.contacts = contactResult;
 
     // Store backup metadata
-    await env.KV.put('maintenance:last-backup', JSON.stringify({
+    await env.KV.put(`${config.KEEP_PREFIX_MAINTENANCE}backup`, JSON.stringify({
       results: results,
       timestamp: new Date().toISOString()
     }));

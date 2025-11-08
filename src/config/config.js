@@ -1,5 +1,5 @@
 /**
- * Centralized configuration module for the Cloudflare Workers Newsletter System
+ * Centralized configuration module for the Cloudflare Workers Newsletter & Contact Management System
  */
 
 function withColon(p) {
@@ -31,6 +31,28 @@ export function buildConfig(env) {
 
   let WORKER_EMAIL_DOMAIN = '';
   if (env && env.WORKER_EMAIL_DOMAIN) WORKER_EMAIL_DOMAIN = String(env.WORKER_EMAIL_DOMAIN);
+
+  // MailerLite Configuration
+  let MAILERLITE_API_TOKEN = '';
+  if (env && env.MAILERLITE_API_TOKEN) MAILERLITE_API_TOKEN = String(env.MAILERLITE_API_TOKEN);
+
+  let MAILERLITE_API_URL = 'https://connect.mailerlite.com/api';
+  if (env && env.MAILERLITE_API_URL) MAILERLITE_API_URL = String(env.MAILERLITE_API_URL);
+
+  let MAILERLITE_FROM_EMAIL = '';
+  if (env && env.MAILERLITE_FROM_EMAIL) MAILERLITE_FROM_EMAIL = String(env.MAILERLITE_FROM_EMAIL);
+
+  let MAILERLITE_GROUP_ID = '';
+  if (env && env.MAILERLITE_GROUP_ID) MAILERLITE_GROUP_ID = String(env.MAILERLITE_GROUP_ID);
+
+  let MAILERLITE_BATCH_SIZE = 50;
+  if (env && env.MAILERLITE_BATCH_SIZE) MAILERLITE_BATCH_SIZE = parseInt(String(env.MAILERLITE_BATCH_SIZE), 10) || 50;
+
+  let MAILERLITE_BATCH_DELAY = 1000;
+  if (env && env.MAILERLITE_BATCH_DELAY) MAILERLITE_BATCH_DELAY = parseInt(String(env.MAILERLITE_BATCH_DELAY), 10) || 1000;
+
+  let MAILERLITE_RATE_LIMIT = 120;
+  if (env && env.MAILERLITE_RATE_LIMIT) MAILERLITE_RATE_LIMIT = parseInt(String(env.MAILERLITE_RATE_LIMIT), 10) || 120;
 
   // Common Email Configuration
   let EMAIL_FROM_NAME = 'Newsletter';
@@ -132,6 +154,19 @@ export function buildConfig(env) {
   if (env && env.PREFIX_BOT_DETECT) PREFIX_BOT_DETECT = String(env.PREFIX_BOT_DETECT);
   PREFIX_BOT_DETECT = withColon(PREFIX_BOT_DETECT);
 
+  // Cleanup Configuration - Additional prefixes to keep
+  let KEEP_PREFIX_MAINTENANCE = 'maintenance:last-';
+  if (env && env.KEEP_PREFIX_MAINTENANCE) KEEP_PREFIX_MAINTENANCE = String(env.KEEP_PREFIX_MAINTENANCE);
+
+  let KEEP_PREFIX_DAILY = 'daily:last-';
+  if (env && env.KEEP_PREFIX_DAILY) KEEP_PREFIX_DAILY = String(env.KEEP_PREFIX_DAILY);
+
+  let KEEP_PREFIX_DEPLOYMENT = 'deployment:';
+  if (env && env.KEEP_PREFIX_DEPLOYMENT) KEEP_PREFIX_DEPLOYMENT = String(env.KEEP_PREFIX_DEPLOYMENT);
+
+  let KEEP_PREFIX_STATS = 'stats:';
+  if (env && env.KEEP_PREFIX_STATS) KEEP_PREFIX_STATS = String(env.KEEP_PREFIX_STATS);
+
   // Turnstile Configuration
   let TURNSTILE_SITE_KEY = '';
   if (env && env.TURNSTILE_SITE_KEY) TURNSTILE_SITE_KEY = String(env.TURNSTILE_SITE_KEY);
@@ -139,12 +174,27 @@ export function buildConfig(env) {
   let TURNSTILE_SECRET_KEY = '';
   if (env && env.TURNSTILE_SECRET_KEY) TURNSTILE_SECRET_KEY = String(env.TURNSTILE_SECRET_KEY);
 
-  // Rate Limiting
+  // Rate Limiting and Protection
   let RATE_LIMIT_MAX = 5;
   if (env && env.RATE_LIMIT_MAX) RATE_LIMIT_MAX = parseInt(String(env.RATE_LIMIT_MAX), 10) || 5;
 
   let RATE_LIMIT_WINDOW_HOURS = 24;
   if (env && env.RATE_LIMIT_WINDOW_HOURS) RATE_LIMIT_WINDOW_HOURS = parseInt(String(env.RATE_LIMIT_WINDOW_HOURS), 10) || 24;
+
+  let GLOBAL_RATE_LIMIT_PER_MINUTE = 30;
+  if (env && env.GLOBAL_RATE_LIMIT_PER_MINUTE) GLOBAL_RATE_LIMIT_PER_MINUTE = parseInt(String(env.GLOBAL_RATE_LIMIT_PER_MINUTE), 10) || 30;
+
+  let GLOBAL_RATE_LIMIT_WINDOW_MS = 60000;
+  if (env && env.GLOBAL_RATE_LIMIT_WINDOW_MS) GLOBAL_RATE_LIMIT_WINDOW_MS = parseInt(String(env.GLOBAL_RATE_LIMIT_WINDOW_MS), 10) || 60000;
+
+  let ABUSE_THRESHOLD = 3;
+  if (env && env.ABUSE_THRESHOLD) ABUSE_THRESHOLD = parseInt(String(env.ABUSE_THRESHOLD), 10) || 3;
+
+  let SUSPICIOUS_ACTIVITY_THRESHOLD = 5;
+  if (env && env.SUSPICIOUS_ACTIVITY_THRESHOLD) SUSPICIOUS_ACTIVITY_THRESHOLD = parseInt(String(env.SUSPICIOUS_ACTIVITY_THRESHOLD), 10) || 5;
+
+  let STATUS_PAGE_PROTECTION = true;
+  if (env && env.STATUS_PAGE_PROTECTION !== undefined) STATUS_PAGE_PROTECTION = String(env.STATUS_PAGE_PROTECTION) === 'true';
 
   // URL Paths
   let SUBSCRIBE_WEB_PATH = '/subscribe';
@@ -189,6 +239,15 @@ export function buildConfig(env) {
     WORKER_EMAIL_FROM,
     WORKER_EMAIL_DOMAIN,
 
+    // MailerLite Config
+    MAILERLITE_API_TOKEN,
+    MAILERLITE_API_URL,
+    MAILERLITE_FROM_EMAIL,
+    MAILERLITE_GROUP_ID,
+    MAILERLITE_BATCH_SIZE,
+    MAILERLITE_BATCH_DELAY,
+    MAILERLITE_RATE_LIMIT,
+
     // Common Email Config
     EMAIL_FROM_NAME,
     EMAIL_FROM_ADDRESS,
@@ -229,13 +288,24 @@ export function buildConfig(env) {
     PREFIX_BOT,
     PREFIX_BOT_DETECT,
 
+    // Cleanup Keep Prefixes
+    KEEP_PREFIX_MAINTENANCE,
+    KEEP_PREFIX_DAILY,
+    KEEP_PREFIX_DEPLOYMENT,
+    KEEP_PREFIX_STATS,
+
     // Turnstile
     TURNSTILE_SITE_KEY,
     TURNSTILE_SECRET_KEY,
 
-    // Rate Limiting
+    // Rate Limiting and Protection
     RATE_LIMIT_MAX,
     RATE_LIMIT_WINDOW_HOURS,
+    GLOBAL_RATE_LIMIT_PER_MINUTE,
+    GLOBAL_RATE_LIMIT_WINDOW_MS,
+    ABUSE_THRESHOLD,
+    SUSPICIOUS_ACTIVITY_THRESHOLD,
+    STATUS_PAGE_PROTECTION,
 
     // URL Paths
     SUBSCRIBE_WEB_PATH,
@@ -264,8 +334,14 @@ export function isConfigValid(config) {
     if (!config.WORKER_EMAIL_FROM) errors.push('WORKER_EMAIL_FROM is required for Worker Email provider');
     if (!config.WORKER_EMAIL_DOMAIN) errors.push('WORKER_EMAIL_DOMAIN is required for Worker Email provider');
     if (!config.EMAIL_FROM_ADDRESS) config.EMAIL_FROM_ADDRESS = config.WORKER_EMAIL_FROM;
+  } else if (config.EMAIL_PROVIDER === 'mailerlite') {
+    if (!config.MAILERLITE_API_TOKEN) errors.push('MAILERLITE_API_TOKEN is required for MailerLite provider');
+    if (!config.MAILERLITE_FROM_EMAIL && !config.EMAIL_FROM_ADDRESS) {
+      errors.push('MAILERLITE_FROM_EMAIL or EMAIL_FROM_ADDRESS is required for MailerLite provider');
+    }
+    if (!config.EMAIL_FROM_ADDRESS) config.EMAIL_FROM_ADDRESS = config.MAILERLITE_FROM_EMAIL;
   } else {
-    errors.push(`Invalid EMAIL_PROVIDER: ${config.EMAIL_PROVIDER}. Must be 'gmail' or 'worker-email'`);
+    errors.push(`Invalid EMAIL_PROVIDER: ${config.EMAIL_PROVIDER}. Must be 'gmail', 'worker-email', or 'mailerlite'`);
   }
 
   // Check required configurations

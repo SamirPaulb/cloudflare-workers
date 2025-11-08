@@ -16,7 +16,7 @@ id = "5117dcc57e2f4229865539675b5435bb"
 preview_id = "5117dcc57e2f4229865539675b5435bb"
 
 [vars]
-# Email Provider Configuration - 'gmail' or 'worker-email'
+# Email Provider Configuration - 'gmail', 'worker-email', or 'mailerlite'
 EMAIL_PROVIDER = "gmail"
 
 # Gmail SMTP Configuration
@@ -62,9 +62,20 @@ PREFIX_CAPTCHA = "captcha"
 PREFIX_BOT = "bot"
 PREFIX_BOT_DETECT = "bot-detect"
 
-# Rate Limiting
-RATE_LIMIT_MAX = 5
-RATE_LIMIT_WINDOW_HOURS = 24
+# Cleanup Configuration - Additional prefixes to keep during maintenance
+KEEP_PREFIX_MAINTENANCE = "maintenance:last-"
+KEEP_PREFIX_DAILY = "daily:last-"
+KEEP_PREFIX_DEPLOYMENT = "deployment:"
+KEEP_PREFIX_STATS = "stats:"
+
+# Rate Limiting and Protection
+RATE_LIMIT_MAX = 5  # Max form submissions per window
+RATE_LIMIT_WINDOW_HOURS = 24  # Window for form submissions
+GLOBAL_RATE_LIMIT_PER_MINUTE = 30  # Max requests per minute per IP
+GLOBAL_RATE_LIMIT_WINDOW_MS = 60000  # Rate limit window in milliseconds (1 minute)
+ABUSE_THRESHOLD = 3  # Number of rate limit hits before showing Turnstile
+SUSPICIOUS_ACTIVITY_THRESHOLD = 5  # Suspicious attempts before Turnstile
+STATUS_PAGE_PROTECTION = true  # Require Turnstile for status page
 
 # URL Paths
 SUBSCRIBE_WEB_PATH = "/subscribe"
@@ -85,28 +96,50 @@ DISPOSABLE_DOMAINS = ""
 # Worker Email Configuration (optional - for when using worker-email provider)
 # WORKER_EMAIL_DOMAIN = "yourdomain.com"
 
-# Workers Logs
+# MailerLite Configuration (optional - for when using mailerlite provider)
+MAILERLITE_API_URL = "https://connect.mailerlite.com/api"
+# MAILERLITE_FROM_EMAIL = "newsletter@yourdomain.com"  # Optional, uses EMAIL_FROM_ADDRESS if not set
+# MAILERLITE_GROUP_ID = ""  # Optional, group ID to add subscribers to
+MAILERLITE_BATCH_SIZE = 50  # Number of recipients per batch
+MAILERLITE_BATCH_DELAY = 1000  # Delay between batches in milliseconds
+MAILERLITE_RATE_LIMIT = 120  # API rate limit per minute
+
+# Workers Logs and Traces
 [observability]
 enabled = true
 
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
+persist = true
 invocation_logs = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1
+persist = true
 
 # ===================================================================
 # SECRETS TO CONFIGURE IN CLOUDFLARE DASHBOARD
 # ===================================================================
 # The following secrets must be set in the Cloudflare Dashboard:
 #
-# 1. GMAIL_USER - Gmail address for SMTP authentication
-# 2. GMAIL_PASSWORD - Gmail App Password (not regular password)
-# 3. EMAIL_FROM_ADDRESS - From email address (can be same as GMAIL_USER)
-# 4. EMAIL_REPLY_TO - Reply-to email address (optional)
-# 5. GITHUB_TOKEN - GitHub personal access token with repo write access
-# 6. TURNSTILE_SITE_KEY - Cloudflare Turnstile site key
-# 7. TURNSTILE_SECRET_KEY - Cloudflare Turnstile secret key
-# 8. WORKER_EMAIL_FROM - (Optional) For worker-email provider
+# Required for all providers:
+# 1. EMAIL_FROM_ADDRESS - From email address
+# 2. EMAIL_REPLY_TO - Reply-to email address (optional)
+# 3. GITHUB_TOKEN - GitHub personal access token with repo write access
+# 4. TURNSTILE_SITE_KEY - Cloudflare Turnstile site key
+# 5. TURNSTILE_SECRET_KEY - Cloudflare Turnstile secret key
+#
+# For Gmail provider:
+# 6. GMAIL_USER - Gmail address for SMTP authentication
+# 7. GMAIL_PASSWORD - Gmail App Password (not regular password)
+#
+# For Worker Email provider:
+# 8. WORKER_EMAIL_FROM - Email address for worker-email provider
+#
+# For MailerLite provider:
+# 9. MAILERLITE_API_TOKEN - MailerLite API token
 #
 # To set secrets, use:
 # wrangler secret put SECRET_NAME

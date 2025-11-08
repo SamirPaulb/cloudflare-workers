@@ -18,7 +18,8 @@ export async function handleContact(request, env, config) {
     return new Response(getContactFormHTML(config), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600'
+        'Cache-Control': 'public, max-age=3600',
+        'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet, noimageindex'
       }
     });
   }
@@ -31,7 +32,7 @@ export async function handleContact(request, env, config) {
   // Handle OPTIONS request - CORS preflight
   if (request.method === 'OPTIONS' && url.pathname === config.CONTACT_API_PATH) {
     return new Response(null, {
-      headers: getCORSHeaders()
+      headers: getCORSHeaders(config)
     });
   }
 
@@ -53,28 +54,28 @@ async function processContactForm(request, env, config) {
       const formData = await request.formData();
       data = Object.fromEntries(formData);
     } else {
-      return jsonResponse({ error: 'Invalid content type' }, 400);
+      return jsonResponse({ error: 'Invalid content type' }, 400, config);
     }
 
     // Validate fields
     const nameValidation = validateRequired(data.name, 'Name');
     if (!nameValidation.valid) {
-      return jsonResponse({ error: nameValidation.error }, 400);
+      return jsonResponse({ error: nameValidation.error }, 400, config);
     }
 
     const emailValidation = validateEmail(data.email);
     if (!emailValidation.valid) {
-      return jsonResponse({ error: emailValidation.error }, 400);
+      return jsonResponse({ error: emailValidation.error }, 400, config);
     }
 
     const phoneValidation = validatePhone(data.phone);
     if (!phoneValidation.valid) {
-      return jsonResponse({ error: phoneValidation.error }, 400);
+      return jsonResponse({ error: phoneValidation.error }, 400, config);
     }
 
     const messageValidation = validateRequired(data.message, 'Message');
     if (!messageValidation.valid) {
-      return jsonResponse({ error: messageValidation.error }, 400);
+      return jsonResponse({ error: messageValidation.error }, 400, config);
     }
 
     // Check rate limit
@@ -85,19 +86,19 @@ async function processContactForm(request, env, config) {
       return jsonResponse({
         error: 'Too many submissions. Please try again later.',
         retryAfter: config.RATE_LIMIT_WINDOW_HOURS * 3600
-      }, 429);
+      }, 429, config);
     }
 
     // Verify Turnstile
     if (config.TURNSTILE_SECRET_KEY) {
       const token = data.turnstileToken || data['cf-turnstile-response'];
       if (!token) {
-        return jsonResponse({ error: 'Verification token required' }, 400);
+        return jsonResponse({ error: 'Verification token required' }, 400, config);
       }
 
       const isValid = await verifyTurnstile(token, clientIp, config.TURNSTILE_SECRET_KEY);
       if (!isValid) {
-        return jsonResponse({ error: 'Verification failed. Please try again.' }, 400);
+        return jsonResponse({ error: 'Verification failed. Please try again.' }, 400, config);
       }
     }
 
@@ -151,11 +152,11 @@ async function processContactForm(request, env, config) {
     return jsonResponse({
       message: 'Thank you for contacting us! We will get back to you soon.',
       id: contactKey
-    }, 200);
+    }, 200, config);
 
   } catch (error) {
     console.error('Contact form error:', error);
-    return jsonResponse({ error: 'An error occurred. Please try again.' }, 500);
+    return jsonResponse({ error: 'An error occurred. Please try again.' }, 500, config);
   }
 }
 
@@ -169,6 +170,18 @@ function getContactFormHTML(config) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Contact Us</title>
+
+    <!-- Prevent all search engine indexing and crawling -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, nocache">
+    <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, max-snippet:0">
+    <meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+
+    <!-- Block AI crawlers -->
+    <meta name="GPTBot" content="noindex, nofollow">
+    <meta name="ChatGPT-User" content="noindex, nofollow">
+    <meta name="CCBot" content="noindex, nofollow">
+    <meta name="anthropic-ai" content="noindex, nofollow">
+    <meta name="Claude-Web" content="noindex, nofollow">
     <style>
         * {
             margin: 0;
@@ -477,11 +490,14 @@ function getContactFormHTML(config) {
 /**
  * Get CORS headers
  */
-function getCORSHeaders() {
+function getCORSHeaders(config) {
+  // Only allow requests from the configured site URL
+  const allowedOrigin = config.SITE_URL || 'https://samirpaulb.github.io';
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Max-Age': '86400'
   };
 }
@@ -489,12 +505,12 @@ function getCORSHeaders() {
 /**
  * Create JSON response
  */
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, config) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      ...getCORSHeaders()
+      ...getCORSHeaders(config)
     }
   });
 }

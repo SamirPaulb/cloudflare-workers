@@ -1,5 +1,5 @@
 /**
- * Main Entry Point for Cloudflare Workers Newsletter System
+ * Main Entry Point for Cloudflare Workers Newsletter & Contact Management System
  *
  * This modular system handles:
  * - Newsletter subscriptions and email delivery
@@ -15,6 +15,8 @@ import { dailyRun } from './newsletter/backend/processor.js';
 import { handleContact } from './contact/frontend.js';
 import { runCleanup, getMaintenanceStatus } from './maintenance/cleanup.js';
 import { performBackup } from './maintenance/backup.js';
+import { protectRequest, verifyTurnstileToken } from './middleware/protection.js';
+import { handleStatus } from './pages/status.js';
 
 /**
  * Main fetch handler for HTTP requests
@@ -23,20 +25,119 @@ async function handleFetch(request, env, ctx) {
   const config = buildConfig(env);
   const url = new URL(request.url);
 
+  // Apply protection middleware (rate limiting, bot detection)
+  const protectionResponse = await protectRequest(request, env, config);
+
+  // If protection middleware returns a response, use it (rate limited or challenge)
+  if (protectionResponse) {
+    // Check if user has valid Turnstile token in cookie
+    const hasValidToken = await verifyTurnstileToken(request, config);
+    if (hasValidToken) {
+      // User passed challenge, allow request to continue
+      // Clear the abuse counter
+      const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+      await env.KV.delete(`${config.PREFIX_RATELIMIT}abuse:${clientIp}`);
+    } else {
+      return protectionResponse;
+    }
+  }
+
   // Validate configuration on first request
   const configValidation = isConfigValid(config);
-  if (!configValidation.valid && url.pathname === '/debug') {
-    return new Response(JSON.stringify({
-      error: 'Configuration errors',
-      errors: configValidation.errors
-    }, null, 2), {
+  if (!configValidation.valid) {
+    console.error('Configuration is invalid:', configValidation.errors);
+
+    // Show detailed error only on debug endpoint
+    if (url.pathname === '/debug') {
+      return new Response(JSON.stringify({
+        error: 'Configuration errors',
+        errors: configValidation.errors
+      }, null, 2), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // For all other endpoints, return a generic error
+    return new Response('Service configuration error. Please contact administrator.', {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'text/plain' }
     });
   }
 
   // Route requests to appropriate handlers
   try {
+    // Handle robots.txt
+    if (url.pathname === '/robots.txt') {
+      return new Response(`# Robots.txt for Cloudflare Workers Newsletter & Contact Management System
+# This site is for private use only via iframe embedding
+
+# Block all search engine crawlers
+User-agent: *
+Disallow: /
+Crawl-delay: 86400
+
+# Block specific known bots
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Slurp
+Disallow: /
+
+User-agent: DuckDuckBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: YandexBot
+Disallow: /
+
+# Block AI crawlers
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+# Block SEO and analysis bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+# No sitemap available
+Sitemap:`, {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'public, max-age=86400',
+          'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet, noimageindex'
+        }
+      });
+    }
+
     // Newsletter Subscribe
     if (url.pathname.startsWith(config.SUBSCRIBE_WEB_PATH) ||
         url.pathname.startsWith(config.SUBSCRIBE_API_PATH)) {
@@ -81,11 +182,8 @@ async function handleFetch(request, env, ctx) {
       });
     }
 
-    if (url.pathname === '/status' && request.method === 'GET') {
-      const status = await getMaintenanceStatus(env, config);
-      return new Response(JSON.stringify(status, null, 2), {
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (url.pathname === '/status') {
+      return await handleStatus(request, env, config);
     }
 
     // Debug endpoint
@@ -143,7 +241,10 @@ async function handleFetch(request, env, ctx) {
     // Default home page
     if (url.pathname === '/') {
       return new Response(getHomePage(config), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Robots-Tag': 'noindex, nofollow, noarchive, nosnippet, noimageindex'
+        }
       });
     }
 
@@ -177,7 +278,7 @@ async function handleScheduled(event, env, ctx) {
       const cleanupResults = await runCleanup(env, config);
 
       // Store cleanup results
-      await env.KV.put('maintenance:last-cleanup', JSON.stringify({
+      await env.KV.put(`${config.KEEP_PREFIX_MAINTENANCE}cleanup`, JSON.stringify({
         results: cleanupResults,
         timestamp: new Date().toISOString()
       }));
@@ -186,7 +287,7 @@ async function handleScheduled(event, env, ctx) {
       const backupResults = await performBackup(env, config);
 
       // Store combined maintenance run
-      await env.KV.put('maintenance:last-run', JSON.stringify({
+      await env.KV.put(`${config.KEEP_PREFIX_MAINTENANCE}run`, JSON.stringify({
         cleanup: cleanupResults,
         backup: backupResults,
         cron: event.cron,
@@ -201,7 +302,7 @@ async function handleScheduled(event, env, ctx) {
     await dailyRun(env, config);
 
     // Store last daily run
-    await env.KV.put('daily:last-run', JSON.stringify({
+    await env.KV.put(`${config.KEEP_PREFIX_DAILY}run`, JSON.stringify({
       cron: event.cron,
       timestamp: new Date().toISOString()
     }));
@@ -229,7 +330,19 @@ function getHomePage(config) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Newsletter System</title>
+    <title>Newsletter & Contact Management System</title>
+
+    <!-- Prevent all search engine indexing and crawling -->
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, nocache">
+    <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex, max-snippet:0">
+    <meta name="bingbot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+
+    <!-- Block AI crawlers -->
+    <meta name="GPTBot" content="noindex, nofollow">
+    <meta name="ChatGPT-User" content="noindex, nofollow">
+    <meta name="CCBot" content="noindex, nofollow">
+    <meta name="anthropic-ai" content="noindex, nofollow">
+    <meta name="Claude-Web" content="noindex, nofollow">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -323,7 +436,7 @@ function getHomePage(config) {
 </head>
 <body>
     <div class="container">
-        <h1>📬 Newsletter Management System</h1>
+        <h1>📬 Newsletter & Contact Management System</h1>
         <p class="subtitle">Automated newsletter delivery powered by Cloudflare Workers</p>
 
         <div class="links">

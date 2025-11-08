@@ -4,6 +4,7 @@
 
 import { GmailProvider } from './gmailProvider.js';
 import { WorkerEmailProvider } from './workerEmailProvider.js';
+import { MailerLiteProvider } from './mailerLiteProvider.js';
 
 export class EmailFactory {
     /**
@@ -29,8 +30,18 @@ export class EmailFactory {
                 }
                 return new WorkerEmailProvider(config, env);
 
+            case 'mailerlite':
+                // Validate MailerLite configuration
+                if (!config.MAILERLITE_API_TOKEN) {
+                    throw new Error('MailerLite API token is required');
+                }
+                if (!config.MAILERLITE_FROM_EMAIL && !config.EMAIL_FROM_ADDRESS) {
+                    throw new Error('MailerLite from email is required');
+                }
+                return new MailerLiteProvider(config, env);
+
             default:
-                throw new Error(`Unknown email provider: ${provider}. Supported: gmail, worker-email`);
+                throw new Error(`Unknown email provider: ${provider}. Supported: gmail, worker-email, mailerlite`);
         }
     }
 
@@ -255,8 +266,16 @@ Visit our website: ${config.SITE_URL}
             <div class="message">${contactData.message.replace(/\n/g, '<br>')}</div>
         </div>
         <div class="field">
+            <div class="label">Subscribed to Newsletter:</div>
+            <div class="value">${contactData.subscribed ? 'Yes' : 'No'}</div>
+        </div>
+        <div class="field">
+            <div class="label">IP Address:</div>
+            <div class="value">${contactData.ipAddress || contactData.ip || 'Not available'}</div>
+        </div>
+        <div class="field">
             <div class="label">Submitted At:</div>
-            <div class="value">${new Date(contactData.submittedAt).toLocaleString()}</div>
+            <div class="value">${new Date(contactData.timestamp || contactData.submittedAt).toLocaleString()}</div>
         </div>
     </div>
 </body>
@@ -272,11 +291,13 @@ Visit our website: ${config.SITE_URL}
 
 Name: ${contactData.name}
 Email: ${contactData.email}
-${contactData.phone ? `Phone: ${contactData.phone}` : ''}
+${contactData.phone ? `Phone: ${contactData.phone}\n` : ''}Subscribed: ${contactData.subscribed ? 'Yes' : 'No'}
+IP Address: ${contactData.ipAddress || contactData.ip || 'Not available'}
+
 Message:
 ${contactData.message}
 
-Submitted At: ${new Date(contactData.submittedAt).toLocaleString()}`;
+Submitted At: ${new Date(contactData.timestamp || contactData.submittedAt).toLocaleString()}`;
     }
 
     /**
