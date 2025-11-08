@@ -12,8 +12,8 @@ crons = [
 
 [[kv_namespaces]]
 binding = "KV"
-# id = "YOUR_KV_NAMESPACE_ID_HERE"  # Set this in .dev.vars or via environment variable
-# preview_id = "YOUR_KV_PREVIEW_ID_HERE"  # Set this in .dev.vars or via environment variable
+id = "5117dcc57e2f4229865539675b5435bb"
+preview_id = "5117dcc57e2f4229865539675b5435bb"
 
 [vars]
 # Email Provider Configuration - 'gmail' or 'worker-email'
@@ -92,7 +92,6 @@ enabled = true
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
-persist = true
 invocation_logs = true
 
 # ===================================================================
