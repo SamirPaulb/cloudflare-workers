@@ -132,19 +132,62 @@ async function processContactForm(request, env, config) {
       console.error('Failed to save to GitHub:', githubResult.error);
     }
 
-    // Send email notifications
+    // Send email notifications with retry
     try {
       // Email to owner
-      await EmailFactory.sendContactEmail(config, env, {
-        contactData: contactData,
-        toOwner: true
-      });
+      let ownerEmailSent = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const ownerResult = await EmailFactory.sendContactEmail(config, env, {
+            contactData: contactData,
+            toOwner: true
+          });
+          if (ownerResult.success) {
+            ownerEmailSent = true;
+            break;
+          }
+          console.warn(`Failed to send owner email (attempt ${attempt}/3): ${ownerResult.error}`);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        } catch (error) {
+          console.error(`Owner email error on attempt ${attempt}:`, error);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
 
       // Confirmation email to sender
-      await EmailFactory.sendContactEmail(config, env, {
-        contactData: contactData,
-        toOwner: false
-      });
+      let confirmationEmailSent = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const confirmResult = await EmailFactory.sendContactEmail(config, env, {
+            contactData: contactData,
+            toOwner: false
+          });
+          if (confirmResult.success) {
+            confirmationEmailSent = true;
+            break;
+          }
+          console.warn(`Failed to send confirmation email (attempt ${attempt}/3): ${confirmResult.error}`);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        } catch (error) {
+          console.error(`Confirmation email error on attempt ${attempt}:`, error);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
+
+      // Log results
+      if (ownerEmailSent && confirmationEmailSent) {
+        console.log('Both contact emails sent successfully');
+      } else {
+        console.warn(`Email delivery incomplete: owner=${ownerEmailSent}, confirmation=${confirmationEmailSent}`);
+      }
     } catch (emailError) {
       console.error('Failed to send email notifications:', emailError);
     }

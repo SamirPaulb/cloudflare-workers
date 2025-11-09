@@ -59,7 +59,7 @@ export async function dailyRun(env, config) {
       stack: error.stack,
       timestamp: new Date().toISOString()
     }), {
-      expirationTtl: 7 * 24 * 60 * 60 // Keep for 7 days
+      expirationTtl: config.TTL_ERROR_LOGS // Use config for 7 days TTL
     });
   }
 }
@@ -114,7 +114,7 @@ async function discoverFromRssAndQueue(env, config) {
         attempts: fetchResult.attempts,
         timestamp: new Date().toISOString()
       }), {
-        expirationTtl: 24 * 60 * 60 // Keep for 24 hours
+        expirationTtl: config.TTL_FEED_ERROR // Use config for 24 hours TTL
       });
       return;
     }
@@ -282,7 +282,7 @@ async function processQueueBatch(env, config, queueKey, queue) {
     queue.sentTo = queue.sentTo || [];
 
     // Track successfully sent recipients
-    if (sentResult.totalSent) {
+    if (sentResult.totalSent !== undefined && sentResult.totalSent > 0) {
       const successfulRecipients = nextBatch.slice(0, sentResult.totalSent);
       queue.sentTo.push(...successfulRecipients);
 

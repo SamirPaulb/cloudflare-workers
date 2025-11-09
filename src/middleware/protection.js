@@ -40,7 +40,7 @@ export async function protectRequest(request, env, config) {
     const current = await env.KV.get(dailyKey);
     const count = current ? parseInt(current) + 1 : 1;
     await env.KV.put(dailyKey, String(count), {
-      expirationTtl: 86400 * 2 // Keep for 2 days
+      expirationTtl: config.TTL_DAILY_STATS // Use config for 2 days TTL
     });
   } catch (error) {
     console.error('Error tracking daily requests:', error);
@@ -67,7 +67,7 @@ export async function protectRequest(request, env, config) {
         path: url.pathname,
         timestamp: new Date().toISOString()
       }),
-      { expirationTtl: 86400 } // 24 hours
+      { expirationTtl: config.TTL_BOT_DETECT } // Use config for 24 hours TTL
     );
 
     // Block suspicious bots
@@ -102,7 +102,7 @@ export async function protectRequest(request, env, config) {
     const newAbuseCount = (parseInt(abuseCount) || 0) + 1;
 
     await env.KV.put(abuseKey, String(newAbuseCount), {
-      expirationTtl: 3600 // 1 hour
+      expirationTtl: config.TTL_ABUSE_COUNTER // Use config for 1 hour TTL
     });
 
     // If repeated abuse, show Turnstile challenge
@@ -124,7 +124,7 @@ export async function protectRequest(request, env, config) {
 
   // Store updated timestamps
   await env.KV.put(rateLimitKey, JSON.stringify(timestamps), {
-    expirationTtl: 120 // 2 minutes
+    expirationTtl: config.TTL_RATE_LIMIT // Use config for 2 minutes TTL
   });
 
   // Check for suspicious patterns
@@ -150,7 +150,7 @@ async function checkSuspiciousActivity(env, config, clientIp, pathname) {
       const newCount = (parseInt(count) || 0) + 1;
 
       await env.KV.put(suspiciousKey, String(newCount), {
-        expirationTtl: 3600 // 1 hour
+        expirationTtl: config.TTL_SUSPICIOUS_ACTIVITY // Use config for 1 hour TTL
       });
 
       if (newCount > config.SUSPICIOUS_ACTIVITY_THRESHOLD) {

@@ -91,7 +91,7 @@ export function buildConfig(env) {
   let GITHUB_BACKUP_REPO = '';
   if (env && env.GITHUB_BACKUP_REPO) GITHUB_BACKUP_REPO = String(env.GITHUB_BACKUP_REPO);
 
-  let GITHUB_BACKUP_BRANCH = '';
+  let GITHUB_BACKUP_BRANCH = 'main';
   if (env && env.GITHUB_BACKUP_BRANCH) GITHUB_BACKUP_BRANCH = String(env.GITHUB_BACKUP_BRANCH);
 
   let GITHUB_TOKEN = '';
@@ -107,7 +107,7 @@ export function buildConfig(env) {
   let GITHUB_CONTACT_REPO = '';
   if (env && env.GITHUB_CONTACT_REPO) GITHUB_CONTACT_REPO = String(env.GITHUB_CONTACT_REPO);
 
-  let GITHUB_CONTACT_BRANCH = '';
+  let GITHUB_CONTACT_BRANCH = 'main';
   if (env && env.GITHUB_CONTACT_BRANCH) GITHUB_CONTACT_BRANCH = String(env.GITHUB_CONTACT_BRANCH);
 
   let GITHUB_CONTACT_PATH = '';
@@ -195,6 +195,28 @@ export function buildConfig(env) {
 
   let STATUS_PAGE_PROTECTION = true;
   if (env && env.STATUS_PAGE_PROTECTION !== undefined) STATUS_PAGE_PROTECTION = String(env.STATUS_PAGE_PROTECTION) === 'true';
+
+  // TTL (Time To Live) Configuration in seconds
+  let TTL_RATE_LIMIT = 120; // 2 minutes
+  if (env && env.TTL_RATE_LIMIT) TTL_RATE_LIMIT = parseInt(String(env.TTL_RATE_LIMIT), 10) || 120;
+
+  let TTL_BOT_DETECT = 86400; // 24 hours
+  if (env && env.TTL_BOT_DETECT) TTL_BOT_DETECT = parseInt(String(env.TTL_BOT_DETECT), 10) || 86400;
+
+  let TTL_SUSPICIOUS_ACTIVITY = 3600; // 1 hour
+  if (env && env.TTL_SUSPICIOUS_ACTIVITY) TTL_SUSPICIOUS_ACTIVITY = parseInt(String(env.TTL_SUSPICIOUS_ACTIVITY), 10) || 3600;
+
+  let TTL_ABUSE_COUNTER = 3600; // 1 hour
+  if (env && env.TTL_ABUSE_COUNTER) TTL_ABUSE_COUNTER = parseInt(String(env.TTL_ABUSE_COUNTER), 10) || 3600;
+
+  let TTL_DAILY_STATS = 172800; // 2 days
+  if (env && env.TTL_DAILY_STATS) TTL_DAILY_STATS = parseInt(String(env.TTL_DAILY_STATS), 10) || 172800;
+
+  let TTL_ERROR_LOGS = 604800; // 7 days
+  if (env && env.TTL_ERROR_LOGS) TTL_ERROR_LOGS = parseInt(String(env.TTL_ERROR_LOGS), 10) || 604800;
+
+  let TTL_FEED_ERROR = 86400; // 24 hours
+  if (env && env.TTL_FEED_ERROR) TTL_FEED_ERROR = parseInt(String(env.TTL_FEED_ERROR), 10) || 86400;
 
   // URL Paths
   let SUBSCRIBE_WEB_PATH = '/subscribe';
@@ -306,6 +328,15 @@ export function buildConfig(env) {
     ABUSE_THRESHOLD,
     SUSPICIOUS_ACTIVITY_THRESHOLD,
     STATUS_PAGE_PROTECTION,
+
+    // TTL Configuration
+    TTL_RATE_LIMIT,
+    TTL_BOT_DETECT,
+    TTL_SUSPICIOUS_ACTIVITY,
+    TTL_ABUSE_COUNTER,
+    TTL_DAILY_STATS,
+    TTL_ERROR_LOGS,
+    TTL_FEED_ERROR,
 
     // URL Paths
     SUBSCRIBE_WEB_PATH,

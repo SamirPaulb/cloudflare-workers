@@ -102,6 +102,15 @@ export class MailerLiteProvider {
   }
 
   /**
+   * Send batch emails - Interface compatible with GmailProvider
+   * This is the method called by the EmailFactory
+   */
+  async sendBatchEmail({ recipients, subject, html, text, replyTo }) {
+    // Delegate to sendBulkEmail for implementation
+    return this.sendBulkEmail({ recipients, subject, html, text, replyTo });
+  }
+
+  /**
    * Send bulk emails with batching
    */
   async sendBulkEmail({ recipients, subject, html, text, replyTo }) {

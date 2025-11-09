@@ -141,16 +141,19 @@ export function validateRequired(value, fieldName) {
 
 /**
  * Sanitize HTML input to prevent XSS
+ * Important: Ampersand must be escaped FIRST to avoid double-encoding
  */
 export function sanitizeHtml(input) {
   if (!input) return '';
 
   return input
+    // CRITICAL: Must escape & first, otherwise we get double-escaping issues
+    .replace(/&(?!(lt|gt|quot|#39|amp);)/g, '&amp;')
+    // Then escape other special characters in order
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-    .replace(/&(?!(lt|gt|quot|#39|amp);)/g, '&amp;');
+    .replace(/'/g, '&#39;');
 }
 
 /**

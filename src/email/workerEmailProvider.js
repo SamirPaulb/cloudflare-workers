@@ -50,44 +50,14 @@ export class WorkerEmailProvider {
    */
   async sendBatchEmail({ recipients, subject, html, text }) {
     try {
-      const results = [];
-      const batchSize = 50; // Send in batches to avoid limits
-
-      for (let i = 0; i < recipients.length; i += batchSize) {
-        const batch = recipients.slice(i, i + batchSize);
-
-        // Create message with BCC
-        const message = this.createEmailMessage({
-          from: {
-            name: this.config.EMAIL_FROM_NAME || 'Newsletter',
-            email: this.config.WORKER_EMAIL_FROM
-          },
-          to: this.config.WORKER_EMAIL_FROM, // Send to self
-          bcc: batch, // Recipients in BCC
-          subject: subject,
-          html: html,
-          text: text || this.stripHtml(html)
-        });
-
-        // Cloudflare Email Workers cannot send emails
-        return {
-          success: false,
-          error: 'Worker Email provider is not fully implemented. Please use Gmail provider instead.',
-          message: 'Cloudflare Email Workers can only receive emails, not send them directly',
-          totalSent: 0,
-          totalFailed: recipients.length
-        };
-
-        // Add delay between batches
-        if (i + batchSize < recipients.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
+      // Cloudflare Email Workers cannot send emails - return error immediately
+      console.error('WorkerEmailProvider.sendBatchEmail() called - this provider is not implemented');
       return {
-        success: true,
-        message: `Email sent to ${recipients.length} recipients`,
-        details: results
+        success: false,
+        error: 'Worker Email provider is not fully implemented. Please use Gmail or MailerLite provider instead.',
+        message: 'Cloudflare Email Workers can only receive emails, not send them directly',
+        totalSent: 0,
+        totalFailed: recipients.length
       };
     } catch (error) {
       console.error('Worker Email batch send error:', error);

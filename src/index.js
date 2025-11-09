@@ -15,8 +15,14 @@ import { dailyRun } from './newsletter/backend/processor.js';
 import { handleContact } from './contact/frontend.js';
 import { runCleanup, getMaintenanceStatus } from './maintenance/cleanup.js';
 import { performBackup } from './maintenance/backup.js';
+import { runIncrementalMaintenance } from './maintenance/incremental.js';
 import { protectRequest, verifyTurnstileToken } from './middleware/protection.js';
 import { handleStatus } from './pages/status.js';
+
+/**
+ * Admin endpoints are now protected by Turnstile CAPTCHA
+ * Additional protection can be added via Cloudflare Zero Trust
+ */
 
 /**
  * Main fetch handler for HTTP requests
@@ -156,7 +162,8 @@ Sitemap:`, {
       return await handleContact(request, env, config);
     }
 
-    // Admin endpoints
+    // Admin endpoints - REQUIRE AUTHENTICATION
+    // Trigger immediate check for newsletter - Protected by Turnstile and optionally Cloudflare Zero Trust
     if (url.pathname === '/check-now' && request.method === 'POST') {
       await dailyRun(env, config);
       return new Response(JSON.stringify({
@@ -167,6 +174,7 @@ Sitemap:`, {
       });
     }
 
+    // Maintenance endpoint - Protected by Turnstile and optionally Cloudflare Zero Trust
     if (url.pathname === '/maintenance' && request.method === 'POST') {
       const cleanupResults = await runCleanup(env, config);
       const backupResults = await performBackup(env, config);
@@ -182,11 +190,12 @@ Sitemap:`, {
       });
     }
 
+    // Status endpoint - Protected by Turnstile and optionally Cloudflare Zero Trust
     if (url.pathname === '/status') {
       return await handleStatus(request, env, config);
     }
 
-    // Debug endpoint
+    // Debug endpoint - Protected by Turnstile and optionally Cloudflare Zero Trust
     if (url.pathname === '/debug') {
       const debug = {
         environment: {
@@ -223,8 +232,182 @@ Sitemap:`, {
         timestamp: new Date().toISOString()
       };
 
-      return new Response(JSON.stringify(debug, null, 2), {
-        headers: { 'Content-Type': 'application/json' }
+      // Return styled HTML page
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Information</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #667eea;
+            margin-top: 0;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .value {
+            color: #666;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+        .status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.true {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.false {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .timestamp {
+            text-align: center;
+            color: white;
+            margin-top: 20px;
+            opacity: 0.9;
+        }
+        .back-link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            transition: background 0.3s;
+        }
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Home</a>
+        <h1>🐛 Debug Information</h1>
+
+        <div class="section">
+            <h2>Environment</h2>
+            <div class="grid">
+                <div class="item">
+                    <div class="label">KV Storage</div>
+                    <div class="value"><span class="status ${debug.environment.hasKV}">${debug.environment.hasKV ? '✓ Available' : '✗ Not Available'}</span></div>
+                </div>
+                <div class="item">
+                    <div class="label">Email Provider</div>
+                    <div class="value">${debug.environment.emailProvider}</div>
+                </div>
+                <div class="item">
+                    <div class="label">Configuration Valid</div>
+                    <div class="value"><span class="status ${debug.environment.configValid}">${debug.environment.configValid ? '✓ Valid' : '✗ Invalid'}</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Configuration</h2>
+            <div class="grid">
+                ${Object.entries(debug.configuration).map(([key, value]) => `
+                <div class="item">
+                    <div class="label">${key.replace(/_/g, ' ')}</div>
+                    <div class="value">${value}</div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>KV Prefixes</h2>
+            <div class="grid">
+                ${Object.entries(debug.prefixes).map(([key, value]) => `
+                <div class="item">
+                    <div class="label">${key}</div>
+                    <div class="value">${value}</div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Web Paths</h2>
+            <div class="grid">
+                ${Object.entries(debug.paths).map(([key, value]) => `
+                <div class="item">
+                    <div class="label">${key.replace(/_/g, ' ')}</div>
+                    <div class="value"><a href="${value}" style="color: #667eea;">${value}</a></div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Secrets Status</h2>
+            <div class="grid">
+                ${Object.entries(debug.secrets).map(([key, value]) => `
+                <div class="item">
+                    <div class="label">${key.replace(/_/g, ' ')}</div>
+                    <div class="value"><span class="status ${value}">${value ? '✓ Configured' : '✗ Not Configured'}</span></div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+
+        <div class="timestamp">
+            Generated at ${debug.timestamp}
+        </div>
+    </div>
+</body>
+</html>`;
+
+      return new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
     }
 
@@ -270,36 +453,24 @@ async function handleScheduled(event, env, ctx) {
   const config = buildConfig(env);
 
   try {
-    // Check if this is the weekly maintenance cron
-    if (event.cron && config.WEEKLY_CRON && event.cron === config.WEEKLY_CRON) {
-      console.log('Running weekly maintenance (cron: ' + event.cron + ')');
+    console.log('Cron triggered: ' + event.cron);
 
-      // Run cleanup
-      const cleanupResults = await runCleanup(env, config);
+    // Run incremental maintenance (small chunk)
+    // This processes only a tiny portion each time to stay under CPU limits
+    const maintenanceResult = await runIncrementalMaintenance(env, config);
+    console.log('Incremental maintenance:', maintenanceResult);
 
-      // Store cleanup results
-      await env.KV.put(`${config.KEEP_PREFIX_MAINTENANCE}cleanup`, JSON.stringify({
-        results: cleanupResults,
-        timestamp: new Date().toISOString()
-      }));
+    // Also check for newsletters (lightweight)
+    const lastNewsletterCheck = await env.KV.get(`${config.KEEP_PREFIX_DAILY}lastNewsletterCheck`);
+    const now = new Date();
 
-      // Run backup
-      const backupResults = await performBackup(env, config);
+    if (!lastNewsletterCheck || (now - new Date(lastNewsletterCheck)) > 60 * 60 * 1000) {
+      // Run newsletter check if it's been more than an hour
+      await env.KV.put(`${config.KEEP_PREFIX_DAILY}lastNewsletterCheck`, now.toISOString());
 
-      // Store combined maintenance run
-      await env.KV.put(`${config.KEEP_PREFIX_MAINTENANCE}run`, JSON.stringify({
-        cleanup: cleanupResults,
-        backup: backupResults,
-        cron: event.cron,
-        timestamp: new Date().toISOString()
-      }));
-
-      return;
+      // Run in background to not block
+      ctx.waitUntil(dailyRun(env, config));
     }
-
-    // Otherwise, run daily newsletter processing
-    console.log('Running daily newsletter processing (cron: ' + event.cron + ')');
-    await dailyRun(env, config);
 
     // Store last daily run
     await env.KV.put(`${config.KEEP_PREFIX_DAILY}run`, JSON.stringify({
@@ -317,7 +488,9 @@ async function handleScheduled(event, env, ctx) {
       error: error.message,
       stack: error.stack,
       timestamp: new Date().toISOString()
-    }));
+    }), {
+      expirationTtl: config.TTL_ERROR_LOGS // Use config for 7 days TTL
+    });
   }
 }
 
@@ -458,10 +631,39 @@ function getHomePage(config) {
                 <p>Get in touch</p>
             </a>
 
-            <a href="/status" class="link-card">
+            <a href="/health" class="link-card">
                 <div class="icon">📊</div>
-                <h3>Status</h3>
+                <h3>Health</h3>
                 <p>System status</p>
+            </a>
+        </div>
+
+        <h2 style="margin-top: 40px; color: #333;">Admin Endpoints</h2>
+        <p style="color: #666; margin-bottom: 20px;">These endpoints are protected by Turnstile CAPTCHA and can be further secured with Cloudflare Zero Trust</p>
+
+        <div class="links">
+            <a href="/status" class="link-card">
+                <div class="icon">🔍</div>
+                <h3>Status</h3>
+                <p>View detailed system status</p>
+            </a>
+
+            <a href="/check-now" class="link-card" onclick="event.preventDefault(); if(confirm('This will trigger immediate newsletter check. Continue?')) { fetch('/check-now', {method: 'POST'}).then(r => r.json()).then(d => alert(JSON.stringify(d, null, 2))).catch(e => alert('Error: ' + e)); }">
+                <div class="icon">🚀</div>
+                <h3>Check Now</h3>
+                <p>Trigger newsletter check (POST)</p>
+            </a>
+
+            <a href="/maintenance" class="link-card" onclick="event.preventDefault(); if(confirm('This will run maintenance tasks including cleanup and backup. Continue?')) { fetch('/maintenance', {method: 'POST'}).then(r => r.json()).then(d => alert('Maintenance completed. Check console for details.')).then(() => console.log(d)).catch(e => alert('Error: ' + e)); }">
+                <div class="icon">🔧</div>
+                <h3>Maintenance</h3>
+                <p>Run cleanup & backup (POST)</p>
+            </a>
+
+            <a href="/debug" class="link-card">
+                <div class="icon">🐛</div>
+                <h3>Debug</h3>
+                <p>View configuration info</p>
             </a>
         </div>
 
@@ -486,7 +688,7 @@ function getHomePage(config) {
         </div>
 
         <footer>
-            <p>Powered by Cloudflare Workers • Version 2.0</p>
+            <p>Powered by Cloudflare Workers • Version 2.0 (Production Hardened)</p>
             <p>© ${new Date().getFullYear()} ${config.SITE_OWNER}</p>
         </footer>
     </div>

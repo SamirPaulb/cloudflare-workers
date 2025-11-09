@@ -77,6 +77,15 @@ ABUSE_THRESHOLD = 3  # Number of rate limit hits before showing Turnstile
 SUSPICIOUS_ACTIVITY_THRESHOLD = 5  # Suspicious attempts before Turnstile
 STATUS_PAGE_PROTECTION = true  # Require Turnstile for status page
 
+# TTL (Time To Live) Configuration in seconds - for auto-expiring temporary entries
+TTL_RATE_LIMIT = 120  # 2 minutes - Rate limit entries auto-expire
+TTL_BOT_DETECT = 86400  # 24 hours - Bot detection entries auto-expire
+TTL_SUSPICIOUS_ACTIVITY = 3600  # 1 hour - Suspicious activity counters auto-expire
+TTL_ABUSE_COUNTER = 3600  # 1 hour - Abuse counters auto-expire
+TTL_DAILY_STATS = 172800  # 2 days - Daily statistics auto-expire
+TTL_ERROR_LOGS = 604800  # 7 days - Error logs auto-expire
+TTL_FEED_ERROR = 86400  # 24 hours - Feed fetch errors auto-expire
+
 # URL Paths
 SUBSCRIBE_WEB_PATH = "/subscribe"
 SUBSCRIBE_API_PATH = "/api/subscribe"

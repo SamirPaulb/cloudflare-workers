@@ -5,6 +5,7 @@
 import { GmailProvider } from './gmailProvider.js';
 import { WorkerEmailProvider } from './workerEmailProvider.js';
 import { MailerLiteProvider } from './mailerLiteProvider.js';
+import { escapeHtml, sanitizeInput } from '../utils/sanitize.js';
 
 export class EmailFactory {
     /**
@@ -105,7 +106,7 @@ export class EmailFactory {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${post.title}</title>
+    <title>${escapeHtml(post.title)}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -189,14 +190,14 @@ export class EmailFactory {
             <h1>📬 ${config.EMAIL_FROM_NAME || 'Newsletter'}</h1>
         </div>
         <div class="content">
-            <h2>New Post: ${post.title}</h2>
+            <h2>New Post: ${escapeHtml(post.title)}</h2>
             <p>Thank you for subscribing and reading!</p>
             <p>A new blog post has been published. Click the button below to read it.</p>
             <div class="button-container">
-                <a href="${post.url}" class="button" style="color: white !important; text-decoration: none;">Read Now →</a>
+                <a href="${escapeHtml(post.url)}" class="button" style="color: white !important; text-decoration: none;">Read Now →</a>
             </div>
             <p style="font-size: 14px; color: #999; margin-top: 20px;">
-                Article link: <a href="${post.url}" class="post-link">${post.url}</a>
+                Article link: <a href="${escapeHtml(post.url)}" class="post-link">${escapeHtml(post.url)}</a>
             </p>
         </div>
         <div class="footer">
@@ -224,9 +225,9 @@ export class EmailFactory {
         return `${config.EMAIL_FROM_NAME || 'Newsletter'}
 =====================================
 
-${post.title}
+${sanitizeInput(post.title)}
 
-${post.description || 'We\'ve published a new article that we think you\'ll find interesting.'}
+${sanitizeInput(post.description) || 'We\'ve published a new article that we think you\'ll find interesting.'}
 
 Read the full article: ${post.url}
 
@@ -261,21 +262,21 @@ Visit the website: ${config.SITE_URL}
         <h2>New Contact Form Submission</h2>
         <div class="field">
             <div class="label">Name:</div>
-            <div class="value">${contactData.name}</div>
+            <div class="value">${escapeHtml(contactData.name)}</div>
         </div>
         <div class="field">
             <div class="label">Email:</div>
-            <div class="value"><a href="mailto:${contactData.email}">${contactData.email}</a></div>
+            <div class="value"><a href="mailto:${escapeHtml(contactData.email)}">${escapeHtml(contactData.email)}</a></div>
         </div>
         ${contactData.phone ? `
         <div class="field">
             <div class="label">Phone:</div>
-            <div class="value">${contactData.phone}</div>
+            <div class="value">${escapeHtml(contactData.phone)}</div>
         </div>
         ` : ''}
         <div class="field">
             <div class="label">Message:</div>
-            <div class="message">${contactData.message.replace(/\n/g, '<br>')}</div>
+            <div class="message">${escapeHtml(contactData.message).replace(/\n/g, '<br>')}</div>
         </div>
         <div class="field">
             <div class="label">Subscribed to Newsletter:</div>
@@ -332,11 +333,11 @@ Submitted At: ${new Date(contactData.timestamp || contactData.submittedAt).toLoc
             <h2>Thank You for Your Message!</h2>
         </div>
         <div class="content">
-            <p>Hi ${contactData.name},</p>
+            <p>Hi ${escapeHtml(contactData.name)},</p>
             <p>Your message has been received and will be responded to as soon as possible.</p>
             <p>Here's a copy of your submission:</p>
             <blockquote style="background: #f5f5f5; padding: 15px; border-left: 3px solid #667eea; margin: 20px 0;">
-                ${contactData.message.replace(/\n/g, '<br>')}
+                ${escapeHtml(contactData.message).replace(/\n/g, '<br>')}
             </blockquote>
             <p>Best regards,<br>${config.SITE_OWNER || 'The Team'}</p>
         </div>

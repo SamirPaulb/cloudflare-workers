@@ -1,5 +1,5 @@
 /**
- * GitHub API utility functions
+ * GitHub API utility functions - FIXED VERSION
  */
 
 import { withRetry, withHttpRetry } from './retry.js';
@@ -47,14 +47,37 @@ export async function getFile(config, { repo, branch, path }) {
 }
 
 /**
- * Create or update file in GitHub repository
+ * Create or update file in GitHub repository - FIXED VERSION
  */
 export async function createOrUpdateFile(config, { repo, branch, path, content, message }) {
-  return await withRetry(async (attempt) => {
-    console.log(`GitHub file update attempt ${attempt} for ${path}`);
+  // Validate inputs
+  if (!config.GITHUB_TOKEN) {
+    console.error('GITHUB_TOKEN is missing');
+    return {
+      success: false,
+      error: 'GITHUB_TOKEN is not configured'
+    };
+  }
 
-    // Check if file exists
-    const existingFile = await getFile(config, { repo, branch, path }).catch(() => null);
+  if (!config.GITHUB_OWNER) {
+    console.error('GITHUB_OWNER is missing');
+    return {
+      success: false,
+      error: 'GITHUB_OWNER is not configured'
+    };
+  }
+
+  try {
+    console.log(`Attempting to update file: ${config.GITHUB_OWNER}/${repo}/${path} on branch ${branch}`);
+
+    // Check if file exists first
+    let existingFile = null;
+    try {
+      existingFile = await getFile(config, { repo, branch, path });
+      console.log(`File ${path} exists, will update with SHA: ${existingFile?.sha}`);
+    } catch (error) {
+      console.log(`File ${path} does not exist, will create new file`);
+    }
 
     const url = `https://api.github.com/repos/${config.GITHUB_OWNER}/${repo}/contents/${path}`;
 
@@ -69,6 +92,8 @@ export async function createOrUpdateFile(config, { repo, branch, path, content, 
       body.sha = existingFile.sha;
     }
 
+    console.log(`Making PUT request to GitHub API...`);
+
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
@@ -80,239 +105,53 @@ export async function createOrUpdateFile(config, { repo, branch, path, content, 
       body: JSON.stringify(body)
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const error = await response.text();
-      const errorObj = new Error(`GitHub API error: ${response.status} - ${error}`);
-      errorObj.status = response.status;
+      console.error(`GitHub API error: ${response.status} - ${responseText.substring(0, 500)}`);
 
-      // Don't retry on certain errors
-      if (response.status === 401 || response.status === 403 || response.status === 422) {
-        throw errorObj; // These won't be retried
+      // Parse error message
+      let errorMessage = `GitHub API error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorMessage = errorJson.message || errorMessage;
+
+        // Check for specific errors
+        if (response.status === 401) {
+          errorMessage = 'Invalid GitHub token - please check GITHUB_TOKEN';
+        } else if (response.status === 403) {
+          errorMessage = 'GitHub token lacks permissions - ensure it has repo write access';
+        } else if (response.status === 404) {
+          errorMessage = `Repository ${config.GITHUB_OWNER}/${repo} not found or branch ${branch} does not exist`;
+        } else if (response.status === 422) {
+          errorMessage = `Validation failed: ${errorJson.errors?.[0]?.message || errorJson.message}`;
+        }
+      } catch (e) {
+        // Keep original error message if parsing fails
       }
 
-      // Retry on server errors
-      if (response.status >= 500 || response.status === 429) {
-        throw errorObj; // Will be retried
-      }
-
-      throw errorObj;
+      return {
+        success: false,
+        error: errorMessage
+      };
     }
 
-    const result = await response.json();
+    const result = JSON.parse(responseText);
+    console.log(`Successfully updated file ${path} - new SHA: ${result.content?.sha}`);
+
     return {
       success: true,
-      sha: result.content.sha,
-      url: result.content.html_url
-    };
-  }, {
-    maxAttempts: 3,
-    initialDelay: 2000,
-    backoffMultiplier: 2,
-    retryableStatusCodes: [429, 500, 502, 503, 504]
-  });
-}
-
-/**
- * Commit multiple files to GitHub using low-level Git API
- */
-export async function commitMultipleFiles(config, { repo, branch, files, message }) {
-  try {
-    const githubApi = 'https://api.github.com';
-    const owner = config.GITHUB_OWNER;
-    const token = config.GITHUB_TOKEN;
-
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'Cloudflare-Worker'
+      sha: result.content?.sha,
+      url: result.content?.html_url
     };
 
-    // Get current branch reference
-    const refRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-      headers
-    });
-
-    if (!refRes.ok) {
-      // Branch might not exist, try to create it from main
-      const mainRefRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/main`, {
-        headers
-      });
-
-      if (!mainRefRes.ok) {
-        throw new Error('Could not find main branch');
-      }
-
-      const mainRef = await mainRefRes.json();
-
-      // Create new branch
-      const createBranchRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ref: `refs/heads/${branch}`,
-          sha: mainRef.object.sha
-        })
-      });
-
-      if (!createBranchRes.ok) {
-        throw new Error('Failed to create branch');
-      }
-
-      // Re-fetch the new branch reference
-      const newRefRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-        headers
-      });
-
-      if (!newRefRes.ok) {
-        throw new Error('Failed to get new branch reference');
-      }
-
-      const refData = await newRefRes.json();
-      return await continueCommit(githubApi, owner, repo, branch, token, headers, refData, files, message);
-    }
-
-    const refData = await refRes.json();
-    return await continueCommit(githubApi, owner, repo, branch, token, headers, refData, files, message);
   } catch (error) {
-    console.error('Error committing to GitHub:', error);
+    console.error('Error in createOrUpdateFile:', error);
     return {
       success: false,
-      error: error.message
+      error: error.message || 'Unknown error occurred'
     };
   }
-}
-
-async function continueCommit(githubApi, owner, repo, branch, token, headers, refData, files, message) {
-  // Get the commit object
-  const commitRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/commits/${refData.object.sha}`, {
-    headers
-  });
-
-  if (!commitRes.ok) {
-    throw new Error('Failed to get commit');
-  }
-
-  const commitData = await commitRes.json();
-
-  // Create blobs for each file
-  const blobs = [];
-  for (const file of files) {
-    const blobRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/blobs`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        content: toBase64(file.content),
-        encoding: 'base64'
-      })
-    });
-
-    if (!blobRes.ok) {
-      throw new Error(`Failed to create blob for ${file.path}`);
-    }
-
-    const blob = await blobRes.json();
-    blobs.push({
-      path: file.path,
-      sha: blob.sha
-    });
-  }
-
-  // Create tree
-  const treeRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/trees`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      base_tree: commitData.tree.sha,
-      tree: blobs.map(blob => ({
-        path: blob.path,
-        mode: '100644',
-        type: 'blob',
-        sha: blob.sha
-      }))
-    })
-  });
-
-  if (!treeRes.ok) {
-    throw new Error('Failed to create tree');
-  }
-
-  const tree = await treeRes.json();
-
-  // Create commit
-  const newCommitRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/commits`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      message: message,
-      tree: tree.sha,
-      parents: [refData.object.sha]
-    })
-  });
-
-  if (!newCommitRes.ok) {
-    throw new Error('Failed to create commit');
-  }
-
-  const newCommit = await newCommitRes.json();
-
-  // Update reference
-  const updateRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({
-      sha: newCommit.sha,
-      force: false
-    })
-  });
-
-  if (!updateRes.ok) {
-    // Retry with latest SHA in case of conflict
-    const latestRefRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-      headers
-    });
-
-    if (latestRefRes.ok) {
-      const latestRef = await latestRefRes.json();
-      const retryCommitRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/commits`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          message: message,
-          tree: tree.sha,
-          parents: [latestRef.object.sha]
-        })
-      });
-
-      if (retryCommitRes.ok) {
-        const retryCommit = await retryCommitRes.json();
-        const retryUpdateRes = await fetch(`${githubApi}/repos/${owner}/${repo}/git/refs/heads/${branch}`, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            sha: retryCommit.sha,
-            force: false
-          })
-        });
-
-        if (!retryUpdateRes.ok) {
-          throw new Error('Failed to update reference after retry');
-        }
-
-        return {
-          success: true,
-          commitSha: retryCommit.sha
-        };
-      }
-    }
-
-    throw new Error('Failed to update reference');
-  }
-
-  return {
-    success: true,
-    commitSha: newCommit.sha
-  };
 }
 
 /**

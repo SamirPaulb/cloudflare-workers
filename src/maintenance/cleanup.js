@@ -1,5 +1,20 @@
 /**
  * Cleanup Module - Handles KV cleanup and maintenance operations
+ *
+ * NOTE: Most temporary entries now have TTL (Time To Live) set when created:
+ * - Rate limit entries: 2 minutes TTL (auto-expire)
+ * - Bot detection entries: 24 hours TTL (auto-expire)
+ * - Suspicious activity: 1 hour TTL (auto-expire)
+ * - Abuse counters: 1 hour TTL (auto-expire)
+ * - Error logs: 7 days TTL (auto-expire)
+ * - Daily stats: 2 days TTL (auto-expire)
+ *
+ * This cleanup serves as a backup mechanism for:
+ * 1. Legacy entries created before TTL was implemented
+ * 2. Any entries that failed to set TTL due to errors
+ * 3. Cleaning up entries that need manual age checking
+ *
+ * Since most entries auto-expire, this cleanup uses minimal CPU resources.
  */
 
 import { cleanupPrefix, getQueuesByStatus } from '../utils/kv.js';

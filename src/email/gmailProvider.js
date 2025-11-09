@@ -4,6 +4,8 @@
 
 import { WorkerMailer } from 'worker-mailer';
 import { withRetry, CircuitBreaker } from '../utils/retry.js';
+import { isValidEmail } from '../utils/validation.js';
+import { sanitizeInput } from '../utils/sanitize.js';
 
 export class GmailProvider {
   constructor(config) {
@@ -19,6 +21,38 @@ export class GmailProvider {
    * Send email via Gmail SMTP using worker-mailer
    */
   async sendEmail({ to, subject, html, text, replyTo }) {
+    // Input validation
+    if (!to || (Array.isArray(to) && to.length === 0)) {
+      return {
+        success: false,
+        error: 'No recipients provided'
+      };
+    }
+
+    // Validate email addresses
+    const recipients = Array.isArray(to) ? to : [to];
+    const invalidEmails = recipients.filter(email => !isValidEmail(email));
+    if (invalidEmails.length > 0) {
+      return {
+        success: false,
+        error: `Invalid email addresses: ${invalidEmails.join(', ')}`
+      };
+    }
+
+    if (!subject || subject.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Email subject is required'
+      };
+    }
+
+    if (!html && !text) {
+      return {
+        success: false,
+        error: 'Email content (HTML or text) is required'
+      };
+    }
+
     // Use circuit breaker and retry logic
     const result = await this.circuitBreaker.execute(async () => {
       return await withRetry(async (attempt) => {
@@ -86,19 +120,57 @@ export class GmailProvider {
    * Send batch emails with BCC to avoid exposing recipient list
    */
   async sendBatchEmail({ recipients, subject, html, text }) {
-    // Split recipients into smaller batches to respect Gmail limits
+    // Validate input
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      console.error('sendBatchEmail: recipients must be a non-empty array');
+      return {
+        success: false,
+        error: 'Invalid recipients array',
+        message: 'Recipients must be a non-empty array of email addresses',
+        totalSent: 0,
+        totalFailed: 0
+      };
+    }
+
+    if (!subject || !html) {
+      console.error('sendBatchEmail: subject and html are required');
+      return {
+        success: false,
+        error: 'Missing required parameters',
+        totalSent: 0,
+        totalFailed: recipients.length
+      };
+    }
+
+    // Validate and filter email addresses
+    const validRecipients = recipients.filter(email => isValidEmail(email));
+    const invalidRecipients = recipients.filter(email => !isValidEmail(email));
+
+    if (invalidRecipients.length > 0) {
+      console.warn(`Skipping ${invalidRecipients.length} invalid email addresses`);
+    }
+
+    if (validRecipients.length === 0) {
+      return {
+        success: false,
+        error: 'No valid email addresses found',
+        totalSent: 0,
+        totalFailed: recipients.length
+      };
+    }
+    // Split valid recipients into smaller batches to respect Gmail limits
     const batchSize = 50; // Gmail BCC limit per email
     const batches = [];
 
-    for (let i = 0; i < recipients.length; i += batchSize) {
-      batches.push(recipients.slice(i, i + batchSize));
+    for (let i = 0; i < validRecipients.length; i += batchSize) {
+      batches.push(validRecipients.slice(i, i + batchSize));
     }
 
     const results = {
       successful: [],
       failed: [],
       totalSent: 0,
-      totalFailed: 0
+      totalFailed: invalidRecipients.length // Start with count of invalid emails
     };
 
     // Process each batch with retry logic

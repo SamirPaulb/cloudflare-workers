@@ -308,7 +308,7 @@ export class DeadLetterQueue {
     };
 
     await this.env.KV.put(key, JSON.stringify(data), {
-      expirationTtl: 7 * 24 * 60 * 60 // Keep for 7 days
+      expirationTtl: this.config.TTL_ERROR_LOGS // Use config for 7 days TTL
     });
 
     return key;

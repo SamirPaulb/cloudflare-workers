@@ -155,13 +155,26 @@ wrangler dev
 
 ### Admin Endpoints
 
+**Security:** These endpoints are protected by Cloudflare Turnstile CAPTCHA and can be further secured using Cloudflare Zero Trust access policies.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/check-now` | Manually trigger newsletter processing |
-| `POST` | `/maintenance` | Run maintenance tasks |
-| `GET` | `/status` | Get system status |
-| `GET` | `/debug` | Debug configuration |
-| `GET` | `/health` | Health check |
+| `POST` | `/maintenance` | Run maintenance tasks (cleanup & backup) |
+| `GET` | `/status` | View detailed system status and metrics |
+| `GET` | `/debug` | View configuration and environment info |
+| `GET` | `/health` | Basic health check endpoint |
+
+#### Securing Admin Endpoints with Cloudflare Zero Trust
+
+To add additional protection to admin endpoints:
+
+1. Go to Cloudflare Zero Trust Dashboard
+2. Create an Access Application for your worker domain
+3. Set up access policies (e.g., email authentication, IP restrictions)
+4. Apply policies to paths: `/check-now`, `/maintenance`, `/status`, `/debug`
+
+This provides an extra layer of authentication beyond Turnstile CAPTCHA.
 
 ## 📧 Email Providers
 
