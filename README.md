@@ -1,4 +1,4 @@
-# Cloudflare Workers Newsletter & Contact Management System
+# Serverless Newsletter & Contact Management System using Cloudflare Workers
 
 A fully modular, serverless newsletter and contact form management system built on Cloudflare Workers with multiple email provider support.
 
