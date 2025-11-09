@@ -50,6 +50,29 @@ src/
     └── feedParser.js          # Universal feed parser
 ```
 
+## ✅ Demo
+
+### 🏠 Homepage
+<img width="1442" height="966" alt="image" src="https://github.com/user-attachments/assets/b699c1a9-97d0-4bf7-b7c1-453ef5ff7099" />
+
+### 🎨 Interactive Forms
+
+#### 💬 Contact Form with Auto-Subscribe
+<img width="669" height="807" alt="image" src="https://github.com/user-attachments/assets/6394d3a3-0c7c-4877-a60b-1d1a21ed6ea6" />
+
+#### 📬 Newsletter Subscription Form
+<img width="891" height="672" alt="image" src="https://github.com/user-attachments/assets/d6cceedb-140a-4e26-ba6b-5afb85eea928" />
+
+#### 🚫 Unsubscribe Page
+<img width="861" height="816" alt="image" src="https://github.com/user-attachments/assets/960d08ce-43eb-419f-8e3c-d98e788ece81" />
+
+#### 📊 System Status Page
+> Protected using Cloudflare Zero Trust & Turnstile
+<img width="1172" height="874" alt="image" src="https://github.com/user-attachments/assets/42f6ca68-0fae-4edd-a8ed-e04541d78ca8" />
+<img width="1553" height="927" alt="image" src="https://github.com/user-attachments/assets/54fd7aa8-7824-4c21-8cae-3f899e21d38a" />
+<img width="1130" height="1919" alt="image" src="https://github.com/user-attachments/assets/44a219bf-b167-4108-a27f-0195ea79382b" />
+
+
 ## 🛠️ Setup
 
 ### Prerequisites
@@ -64,8 +87,8 @@ src/
 
 ```bash
 # Clone the repository
-git clone https://github.com/SamirPaulb/cloudflare-workers.git
-cd cloudflare-workers
+git clone https://github.com/SamirPaulb/newsletter-and-contact-system.git
+cd newsletter-and-contact-system
 
 # Install dependencies
 npm install
