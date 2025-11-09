@@ -44,9 +44,9 @@ GITHUB_SUBSCRIBER_BACKUP_PATH = "cloudflare-workers-kv-subscriber-backup.csv"
 GITHUB_CONTACT_BACKUP_PATH = "cloudflare-workers-kv-contact-backup.csv"
 
 # Contact Form GitHub Configuration
-GITHUB_CONTACT_REPO = "cloudflare-workers"
-GITHUB_CONTACT_BRANCH = "contact"
-GITHUB_CONTACT_PATH = "data/contact.json"
+GITHUB_CONTACT_REPO = "database-backup"
+GITHUB_CONTACT_BRANCH = "main"
+GITHUB_CONTACT_PATH = "cloudflare-workers-kv-contact.json"
 
 # Cron Configuration
 WEEKLY_CRON = "0 0 * * sat"
