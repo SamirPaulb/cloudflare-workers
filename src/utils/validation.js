@@ -192,3 +192,12 @@ export function createSlug(text) {
     .replace(/^-+|-+$/g, '')
     .substring(0, 100);
 }
+
+/**
+ * Simple email validation helper (for use in other modules)
+ * Returns boolean instead of validation object
+ */
+export function isValidEmail(email) {
+  const result = validateEmail(email);
+  return result.valid;
+}
