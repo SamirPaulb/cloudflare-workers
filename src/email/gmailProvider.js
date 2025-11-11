@@ -77,7 +77,10 @@ export class GmailProvider {
 
         // Add reply-to if provided
         if (replyTo || this.config.EMAIL_REPLY_TO) {
-          emailOptions.reply = replyTo || this.config.EMAIL_REPLY_TO;
+          emailOptions.replyTo = replyTo || this.config.EMAIL_REPLY_TO;
+          // Also add as headers for better compatibility
+          emailOptions.headers = emailOptions.headers || {};
+          emailOptions.headers['Reply-To'] = replyTo || this.config.EMAIL_REPLY_TO;
         }
 
         // Connect and send using worker-mailer

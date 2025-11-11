@@ -441,7 +441,7 @@ function renderStatusChallenge(config, errorMessage = '') {
 
         ${errorMessage ? `<div class="error">${errorMessage}</div>` : ''}
 
-        <form method="POST" action="/status">
+        <form method="POST" action="/admin/status">
             <div class="turnstile-widget">
                 <div class="cf-turnstile"
                      data-sitekey="${config.TURNSTILE_SITE_KEY}"

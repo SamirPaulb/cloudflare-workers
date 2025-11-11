@@ -166,8 +166,12 @@ async function processContactForm(request, env, config, ctx) {
 
     // Send email notifications with retry
     try {
-      // Email to owner
+      // Email to owner - CRITICAL notification
       let ownerEmailSent = false;
+      const ownerEmail = config.EMAIL_FROM_ADDRESS || config.GMAIL_USER || config.WORKER_EMAIL_FROM;
+
+      console.log(`Sending contact notification to owner`);
+
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const ownerResult = await EmailFactory.sendContactEmail(config, env, {
@@ -190,7 +194,7 @@ async function processContactForm(request, env, config, ctx) {
         }
       }
 
-      // Confirmation email to sender
+      // Confirmation email to sender - optional, nice to have
       let confirmationEmailSent = false;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -200,6 +204,7 @@ async function processContactForm(request, env, config, ctx) {
           });
           if (confirmResult.success) {
             confirmationEmailSent = true;
+            console.log(`Confirmation sent successfully`);
             break;
           }
           console.warn(`Failed to send confirmation email (attempt ${attempt}/3): ${confirmResult.error}`);

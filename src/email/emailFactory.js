@@ -76,8 +76,17 @@ export class EmailFactory {
             const html = this.createContactOwnerHtml(contactData);
             const text = this.createContactOwnerText(contactData);
 
+            const ownerEmail = config.EMAIL_FROM_ADDRESS || config.GMAIL_USER || config.WORKER_EMAIL_FROM;
+
+            if (!ownerEmail) {
+                console.error('No owner email configured! Set EMAIL_FROM_ADDRESS or GMAIL_USER');
+                return { success: false, error: 'Owner email not configured' };
+            }
+
+            console.log(`Sending contact notification to owner, with reply-to`);
+
             return await provider.sendEmail({
-                to: config.EMAIL_FROM_ADDRESS || config.GMAIL_USER || config.WORKER_EMAIL_FROM,
+                to: ownerEmail,
                 subject: `New Contact Form Submission from ${contactData.name}`,
                 html: html,
                 text: text,
