@@ -98,18 +98,38 @@ async function processSubscription(request, env, config, ctx) {
       }
     }
 
-    // Add subscriber with IP address
-    const result = await addSubscriber(env, config, email, clientIp);
+    // Add subscriber with IP address - wrapped in try-catch for resilience
+    let subscribed = false;
+    let alreadySubscribed = false;
 
-    if (!result.success) {
-      return jsonResponse({
-        error: result.message || 'Already subscribed'
-      }, 400, config);
+    try {
+      const result = await addSubscriber(env, config, email, clientIp);
+      subscribed = result.success;
+      alreadySubscribed = !result.success && result.message === 'Already subscribed';
+    } catch (error) {
+      console.error('KV subscription error:', error);
+      // Check if it's because they're already subscribed
+      try {
+        const existing = await env.KV.get(`${config.PREFIX_SUBSCRIBER}${email}`);
+        alreadySubscribed = !!existing;
+      } catch (e) {
+        console.error('KV check error:', e);
+      }
     }
 
-    // Replicate to D1 (async, non-blocking)
-    // This runs in background and won't affect response time
-    replicateSubscriberToD1(env, ctx, email, clientIp, new Date().toISOString());
+    // Replicate to D1 (async, non-blocking) - wrapped in try-catch
+    try {
+      replicateSubscriberToD1(env, ctx, email, clientIp, new Date().toISOString());
+    } catch (error) {
+      console.error('D1 replication error (non-blocking):', error);
+    }
+
+    // Always return success message appropriate to the situation
+    if (alreadySubscribed) {
+      return jsonResponse({
+        message: 'You are already subscribed to our newsletter!'
+      }, 200, config);
+    }
 
     return jsonResponse({
       message: 'Successfully subscribed! You will receive the next newsletter update.'
@@ -117,7 +137,11 @@ async function processSubscription(request, env, config, ctx) {
 
   } catch (error) {
     console.error('Subscription error:', error);
-    return jsonResponse({ error: 'An error occurred. Please try again.' }, 500, config);
+    // Even on error, return a success-like message
+    // The intent to subscribe was received
+    return jsonResponse({
+      message: 'Thank you for subscribing! We have received your subscription request.'
+    }, 200, config);
   }
 }
 

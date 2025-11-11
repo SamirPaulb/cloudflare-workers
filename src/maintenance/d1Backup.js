@@ -145,15 +145,14 @@ CREATE TABLE IF NOT EXISTS contact (
     // Upload to GitHub
     console.log('Uploading SQL backup to GitHub...');
     const githubResult = await createOrUpdateFile(
+      config,
       {
-        GITHUB_TOKEN: config.GITHUB_TOKEN,
-        GITHUB_OWNER: config.GITHUB_OWNER,
-        GITHUB_REPO: config.GITHUB_BACKUP_REPO || 'database-backup',
-        GITHUB_BRANCH: config.GITHUB_BACKUP_BRANCH || 'main',
-        GITHUB_PATH: 'cloudflare-d1-data-backup.sql'
-      },
-      sqlContent,
-      `D1 backup - ${new Date().toISOString()}`
+        repo: config.GITHUB_BACKUP_REPO || 'database-backup',
+        branch: config.GITHUB_BACKUP_BRANCH || 'main',
+        path: 'cloudflare-d1-data-backup.sql',
+        content: sqlContent,
+        message: `D1 backup - ${new Date().toISOString()}`
+      }
     );
 
     if (githubResult.success) {
