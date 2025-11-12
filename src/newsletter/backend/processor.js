@@ -312,15 +312,24 @@ async function processQueueBatch(env, config, queueKey, queue) {
     }
 
     // Success - Update queue status
-    const sentResult = result.result;
+    // BUGFIX: withRetry returns the result directly, not wrapped in { result: ... }
+    const sentResult = result;  // Fixed: was result.result which was undefined
     queue.sentTo = queue.sentTo || [];
+
+    console.log('Email send result:', {
+      totalSent: sentResult?.totalSent,
+      totalFailed: sentResult?.totalFailed,
+      batchSize: nextBatch.length,
+      hasResult: !!sentResult
+    });
 
     // Track successfully sent recipients
     // CRITICAL: Check for 0 explicitly - totalSent=0 is a valid failure state
-    if (sentResult.totalSent !== undefined && sentResult.totalSent !== null) {
+    if (sentResult && sentResult.totalSent !== undefined && sentResult.totalSent !== null) {
       if (sentResult.totalSent > 0) {
         const successfulRecipients = nextBatch.slice(0, sentResult.totalSent);
         queue.sentTo.push(...successfulRecipients);
+        console.log(`Added ${successfulRecipients.length} recipients to sentTo`);
       }
 
       // Handle partial failures
@@ -331,7 +340,8 @@ async function processQueueBatch(env, config, queueKey, queue) {
         console.log(`Partial batch failure: ${sentResult.totalFailed} recipients failed`);
       }
     } else {
-      // All sent successfully
+      // Fallback: If no detailed result, assume all sent successfully
+      console.log(`No detailed result, assuming all ${nextBatch.length} sent successfully`);
       queue.sentTo.push(...nextBatch);
     }
 
