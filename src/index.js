@@ -17,7 +17,6 @@ import { handleContact } from './contact/frontend.js';
 import { protectRequest, verifyTurnstileToken } from './middleware/protection.js';
 import { handleStatus } from './pages/status.js';
 import { handleAdminPanel } from './pages/admin.js';
-import { checkAdminApiRateLimit } from './utils/adminRateLimit.js';
 import { checkNativeAdminRateLimit, checkNativeNewsletterCheckLimit } from './utils/nativeRateLimit.js';
 
 /**
@@ -39,14 +38,10 @@ async function handleFetch(request, env, ctx) {
   if (protectionResponse) {
     // Check if user has valid Turnstile token in cookie
     const hasValidToken = await verifyTurnstileToken(request, config);
-    if (hasValidToken) {
-      // User passed challenge, allow request to continue
-      // Clear the abuse counter
-      const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
-      await env.KV.delete(`${config.PREFIX_RATELIMIT}abuse:${clientIp}`);
-    } else {
+    if (!hasValidToken) {
       return protectionResponse;
     }
+    // User passed challenge, allow request to continue
   }
 
   // Validate configuration on first request
@@ -187,7 +182,7 @@ Sitemap:`, {
         });
       }
 
-      // FIRST: Check native admin rate limit
+      // Check native rate limits (both admin and newsletter check)
       const endpoint = url.pathname.split('/').pop(); // Get the endpoint name
       const nativeCheck = await checkNativeAdminRateLimit(request, env, endpoint);
       if (!nativeCheck.allowed) {
@@ -204,21 +199,18 @@ Sitemap:`, {
         });
       }
 
-      // SECOND: Check KV-based admin API rate limit (more restrictive)
-      const rateLimitCheck = await checkAdminApiRateLimit(request, env, config);
-      if (!rateLimitCheck.allowed) {
+      // Also check newsletter-specific rate limit
+      const newsletterCheck = await checkNativeNewsletterCheckLimit(request, env);
+      if (!newsletterCheck.allowed) {
         return new Response(JSON.stringify({
-          error: 'Rate limit exceeded',
-          message: rateLimitCheck.message,
-          remaining: rateLimitCheck.remaining,
-          resetAt: rateLimitCheck.resetAt
+          error: newsletterCheck.reason || 'Newsletter check rate limit exceeded',
+          message: 'Please wait before checking for newsletters again',
+          retryAfter: 60
         }), {
           status: 429,
           headers: {
             'Content-Type': 'application/json',
-            'X-RateLimit-Limit': String(config.ADMIN_API_RATE_LIMIT_MAX),
-            'X-RateLimit-Remaining': String(rateLimitCheck.remaining),
-            'X-RateLimit-Reset': rateLimitCheck.resetAt.toISOString()
+            'Retry-After': '60'
           }
         });
       }
@@ -228,17 +220,10 @@ Sitemap:`, {
       return new Response(JSON.stringify({
         success: true,
         message: 'Newsletter check completed',
-        timestamp: new Date().toISOString(),
-        rateLimit: {
-          remaining: rateLimitCheck.remaining,
-          resetAt: rateLimitCheck.resetAt
-        }
+        timestamp: new Date().toISOString()
       }), {
         headers: {
-          'Content-Type': 'application/json',
-          'X-RateLimit-Limit': String(config.ADMIN_API_RATE_LIMIT_MAX),
-          'X-RateLimit-Remaining': String(rateLimitCheck.remaining),
-          'X-RateLimit-Reset': rateLimitCheck.resetAt.toISOString()
+          'Content-Type': 'application/json'
         }
       });
     }
@@ -261,7 +246,7 @@ Sitemap:`, {
         });
       }
 
-      // FIRST: Check native admin rate limit
+      // Check native admin rate limit for status endpoint
       const nativeCheck = await checkNativeAdminRateLimit(request, env, 'status');
       if (!nativeCheck.allowed) {
         return new Response(`
@@ -290,37 +275,6 @@ Sitemap:`, {
         });
       }
 
-      // SECOND: Check KV-based admin API rate limit
-      const rateLimitCheck = await checkAdminApiRateLimit(request, env, config);
-      if (!rateLimitCheck.allowed) {
-        return new Response(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Rate Limited</title>
-            <style>
-              body { font-family: sans-serif; text-align: center; padding: 50px; }
-              .error { color: #d32f2f; }
-            </style>
-          </head>
-          <body>
-            <h1 class="error">Rate Limit Exceeded</h1>
-            <p>${rateLimitCheck.message}</p>
-            <p>Reset at: ${rateLimitCheck.resetAt.toLocaleString()}</p>
-            <a href="/admin">Return to Admin Panel</a>
-          </body>
-          </html>
-        `, {
-          status: 429,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'X-RateLimit-Limit': String(config.ADMIN_API_RATE_LIMIT_MAX),
-            'X-RateLimit-Remaining': String(rateLimitCheck.remaining),
-            'X-RateLimit-Reset': rateLimitCheck.resetAt.toISOString()
-          }
-        });
-      }
-
       return await handleStatus(request, env, config);
     }
 
@@ -336,7 +290,7 @@ Sitemap:`, {
         });
       }
 
-      // FIRST: Check native admin rate limit
+      // Check native admin rate limit for debug endpoint
       const endpoint = url.pathname.split('/').pop(); // Get the endpoint name
       const nativeCheck = await checkNativeAdminRateLimit(request, env, endpoint);
       if (!nativeCheck.allowed) {
@@ -349,25 +303,6 @@ Sitemap:`, {
           headers: {
             'Content-Type': 'application/json',
             'Retry-After': '60'
-          }
-        });
-      }
-
-      // SECOND: Check KV-based admin API rate limit (more restrictive)
-      const rateLimitCheck = await checkAdminApiRateLimit(request, env, config);
-      if (!rateLimitCheck.allowed) {
-        return new Response(JSON.stringify({
-          error: 'Rate limit exceeded',
-          message: rateLimitCheck.message,
-          remaining: rateLimitCheck.remaining,
-          resetAt: rateLimitCheck.resetAt
-        }), {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-RateLimit-Limit': String(config.ADMIN_API_RATE_LIMIT_MAX),
-            'X-RateLimit-Remaining': String(rateLimitCheck.remaining),
-            'X-RateLimit-Reset': rateLimitCheck.resetAt.toISOString()
           }
         });
       }

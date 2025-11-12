@@ -1,7 +1,7 @@
 /**
  * Native Rate Limiting Module
- * First layer of defense using Cloudflare's native Rate Limiting API
- * Falls back to KV-based rate limiting for additional checks
+ * ONLY defense mechanism using Cloudflare's native Rate Limiting API
+ * No KV operations for rate limiting to avoid hitting KV limits
  */
 
 import { getClientIp } from './validation.js';
@@ -177,60 +177,188 @@ export async function checkNativeNewsletterCheckLimit(request, env) {
 }
 
 /**
- * Combined rate limit check - Native first, then KV
- * This is a helper function that checks native limits first,
- * then falls back to KV-based limits if native passes
+ * Check API endpoint rate limit
  * @param {Request} request - The incoming request
  * @param {Object} env - Environment bindings
- * @param {Object} config - Configuration object
- * @param {string} type - Type of rate limit to check
- * @param {Function} kvCheckFunction - The KV rate limit function to call
  * @returns {Promise<{allowed: boolean, reason?: string}>}
  */
-export async function checkLayeredRateLimit(request, env, config, type, kvCheckFunction) {
-  // First check native rate limit based on type
-  let nativeCheck;
+export async function checkNativeApiRateLimit(request, env) {
+  try {
+    if (!env.API_RATE_LIMITER) {
+      return { allowed: true };
+    }
 
-  switch (type) {
-    case 'global':
-      nativeCheck = await checkNativeGlobalRateLimit(request, env);
-      break;
-    case 'form:subscribe':
-    case 'form:unsubscribe':
-    case 'form:contact':
-      const formType = type.split(':')[1];
-      nativeCheck = await checkNativeFormRateLimit(request, env, formType);
-      break;
-    case 'admin':
-      nativeCheck = await checkNativeAdminRateLimit(request, env, 'api');
-      break;
-    case 'bot':
-      nativeCheck = await checkNativeBotRateLimit(request, env);
-      break;
-    case 'newsletter-check':
-      nativeCheck = await checkNativeNewsletterCheckLimit(request, env);
-      break;
-    default:
-      nativeCheck = { allowed: true };
-  }
-
-  // If native rate limit blocks, return immediately
-  if (!nativeCheck.allowed) {
-    return nativeCheck;
-  }
-
-  // If native passes and KV check function provided, check KV limits
-  if (kvCheckFunction) {
     const clientIp = getClientIp(request);
-    const kvCheck = await kvCheckFunction(env, config, clientIp);
+    const { pathname } = new URL(request.url);
+    const key = `${clientIp}:api:${pathname}`;
 
-    if (!kvCheck.allowed) {
+    const { success } = await env.API_RATE_LIMITER.limit({ key });
+
+    if (!success) {
+      console.log(`Native API rate limit exceeded for ${clientIp} on ${pathname}`);
       return {
         allowed: false,
-        reason: 'Rate limit exceeded',
-        remaining: kvCheck.remaining || 0
+        reason: 'API rate limit exceeded'
       };
     }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('Native API rate limit check error:', error);
+    return { allowed: true }; // Fail open
+  }
+}
+
+/**
+ * Check burst rate limit (very short window)
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+export async function checkNativeBurstRateLimit(request, env) {
+  try {
+    if (!env.BURST_RATE_LIMITER) {
+      return { allowed: true };
+    }
+
+    const clientIp = getClientIp(request);
+    const { success } = await env.BURST_RATE_LIMITER.limit({ key: clientIp });
+
+    if (!success) {
+      console.log(`Native burst rate limit exceeded for ${clientIp}`);
+      return {
+        allowed: false,
+        reason: 'Too many requests in a short time. Please slow down.'
+      };
+    }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('Native burst rate limit check error:', error);
+    return { allowed: true }; // Fail open
+  }
+}
+
+/**
+ * Check daily form rate limit
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @param {string} formType - Type of form
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+export async function checkNativeFormDailyLimit(request, env, formType) {
+  try {
+    if (!env.FORM_DAILY_LIMITER) {
+      return { allowed: true };
+    }
+
+    const clientIp = getClientIp(request);
+    const key = `${clientIp}:${formType}:daily`;
+
+    const { success } = await env.FORM_DAILY_LIMITER.limit({ key });
+
+    if (!success) {
+      console.log(`Native daily form limit exceeded for ${clientIp} on ${formType}`);
+      return {
+        allowed: false,
+        reason: `Daily limit exceeded for ${formType} submissions. Please try again tomorrow.`
+      };
+    }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('Native daily form limit check error:', error);
+    return { allowed: true }; // Fail open
+  }
+}
+
+/**
+ * Check admin daily rate limit
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+export async function checkNativeAdminDailyLimit(request, env) {
+  try {
+    if (!env.ADMIN_DAILY_LIMITER) {
+      return { allowed: true };
+    }
+
+    const clientIp = getClientIp(request);
+    const key = `${clientIp}:admin:daily`;
+
+    const { success } = await env.ADMIN_DAILY_LIMITER.limit({ key });
+
+    if (!success) {
+      console.log(`Native daily admin limit exceeded for ${clientIp}`);
+      return {
+        allowed: false,
+        reason: 'Daily admin API limit exceeded. Please try again tomorrow.'
+      };
+    }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('Native daily admin limit check error:', error);
+    return { allowed: true }; // Fail open
+  }
+}
+
+/**
+ * Comprehensive rate limit check for any endpoint
+ * Checks multiple rate limiters in order of strictness
+ * @param {Request} request - The incoming request
+ * @param {Object} env - Environment bindings
+ * @param {string} endpointType - Type of endpoint being accessed
+ * @returns {Promise<{allowed: boolean, reason?: string}>}
+ */
+export async function checkComprehensiveRateLimit(request, env, endpointType) {
+  // Check burst protection first (most strict, shortest window)
+  const burstCheck = await checkNativeBurstRateLimit(request, env);
+  if (!burstCheck.allowed) {
+    return burstCheck;
+  }
+
+  // Check global rate limit
+  const globalCheck = await checkNativeGlobalRateLimit(request, env);
+  if (!globalCheck.allowed) {
+    return globalCheck;
+  }
+
+  // Check endpoint-specific rate limits
+  switch (endpointType) {
+    case 'form':
+      const formType = new URL(request.url).pathname.includes('subscribe') ? 'subscribe' :
+                      new URL(request.url).pathname.includes('unsubscribe') ? 'unsubscribe' : 'contact';
+
+      // Check hourly form limit
+      const formCheck = await checkNativeFormRateLimit(request, env, formType);
+      if (!formCheck.allowed) return formCheck;
+
+      // Check daily form limit
+      const formDailyCheck = await checkNativeFormDailyLimit(request, env, formType);
+      if (!formDailyCheck.allowed) return formDailyCheck;
+      break;
+
+    case 'admin':
+      // Check hourly admin limit
+      const adminCheck = await checkNativeAdminRateLimit(request, env, 'api');
+      if (!adminCheck.allowed) return adminCheck;
+
+      // Check daily admin limit
+      const adminDailyCheck = await checkNativeAdminDailyLimit(request, env);
+      if (!adminDailyCheck.allowed) return adminDailyCheck;
+      break;
+
+    case 'api':
+      const apiCheck = await checkNativeApiRateLimit(request, env);
+      if (!apiCheck.allowed) return apiCheck;
+      break;
+
+    case 'bot':
+      const botCheck = await checkNativeBotRateLimit(request, env);
+      if (!botCheck.allowed) return botCheck;
+      break;
   }
 
   return { allowed: true };

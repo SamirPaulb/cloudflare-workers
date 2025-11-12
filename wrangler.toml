@@ -6,7 +6,7 @@ workers_dev = true
 
 [triggers]
 crons = [
-  "0 * * * *"  # Every hour for newsletter checks
+  "0 */6 * * *"  # Every 6 hours for newsletter checks
 ]
 
 [[kv_namespaces]]
@@ -187,29 +187,32 @@ persist = true
 # ===================================================================
 # NATIVE RATE LIMITING CONFIGURATION
 # ===================================================================
-# These native rate limiters act as the first line of defense
-# with slightly lower limits than KV-based rate limiting to save KV operations
+# These native rate limiters are the ONLY rate limiting mechanism
+# No KV operations are used for rate limiting to avoid hitting KV limits
+# Values are based on the previous KV rate limit configurations
 
 # Global rate limiting - First check for all requests
 [[ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1001"
-# 25 requests per minute (lower than KV's 30)
-simple = { limit = 25, period = 60 }
+# 30 requests per minute per IP (was KV's GLOBAL_RATE_LIMIT_PER_MINUTE)
+simple = { limit = 30, period = 60 }
 
 # Form submission rate limiting (subscribe, unsubscribe, contact)
 [[ratelimits]]
 name = "FORM_RATE_LIMITER"
 namespace_id = "1002"
-# 4 requests per 60 seconds (KV allows 5 per 24 hours, this is more granular)
-simple = { limit = 4, period = 60 }
+# 5 requests per hour (based on RATE_LIMIT_MAX = 5 per 24 hours)
+# Using hourly window for better granularity
+simple = { limit = 5, period = 3600 }
 
 # Admin API rate limiting
 [[ratelimits]]
 name = "ADMIN_RATE_LIMITER"
 namespace_id = "1003"
-# 4 requests per 60 seconds (KV allows 5 per 24 hours)
-simple = { limit = 4, period = 60 }
+# 5 requests per hour (based on ADMIN_API_RATE_LIMIT_MAX = 5 per 24 hours)
+# Using hourly window for better protection
+simple = { limit = 5, period = 3600 }
 
 # Aggressive bot protection - for detected bots/suspicious activity
 [[ratelimits]]
@@ -222,5 +225,63 @@ simple = { limit = 2, period = 60 }
 [[ratelimits]]
 name = "NEWSLETTER_CHECK_LIMITER"
 namespace_id = "1005"
-# 2 checks per minute (prevent abuse of RSS checking)
-simple = { limit = 2, period = 60 }
+# 2 checks per 5 minutes (prevent abuse of RSS checking)
+simple = { limit = 2, period = 300 }
+
+# Additional rate limiters for comprehensive protection
+
+# API endpoint rate limiting - for all /api/* endpoints
+[[ratelimits]]
+name = "API_RATE_LIMITER"
+namespace_id = "1006"
+# 10 requests per minute for API endpoints
+simple = { limit = 10, period = 60 }
+
+# Static resource rate limiting - for CSS, JS, images
+[[ratelimits]]
+name = "STATIC_RATE_LIMITER"
+namespace_id = "1007"
+# 100 requests per minute for static resources
+simple = { limit = 100, period = 60 }
+
+# Homepage rate limiting
+[[ratelimits]]
+name = "HOME_RATE_LIMITER"
+namespace_id = "1008"
+# 20 requests per minute for homepage
+simple = { limit = 20, period = 60 }
+
+# Status page rate limiting
+[[ratelimits]]
+name = "STATUS_RATE_LIMITER"
+namespace_id = "1009"
+# 5 requests per minute for status page
+simple = { limit = 5, period = 60 }
+
+# Debug endpoint rate limiting
+[[ratelimits]]
+name = "DEBUG_RATE_LIMITER"
+namespace_id = "1010"
+# 3 requests per minute for debug endpoint
+simple = { limit = 3, period = 60 }
+
+# Burst protection - very short window
+[[ratelimits]]
+name = "BURST_RATE_LIMITER"
+namespace_id = "1011"
+# 10 requests per 10 seconds (burst protection)
+simple = { limit = 10, period = 10 }
+
+# Daily limit for forms (complementary to hourly)
+[[ratelimits]]
+name = "FORM_DAILY_LIMITER"
+namespace_id = "1012"
+# 5 requests per day (24 hours) matching original RATE_LIMIT_MAX
+simple = { limit = 5, period = 86400 }
+
+# Admin daily limit (complementary to hourly)
+[[ratelimits]]
+name = "ADMIN_DAILY_LIMITER"
+namespace_id = "1013"
+# 5 requests per day (24 hours) matching original ADMIN_API_RATE_LIMIT_MAX
+simple = { limit = 5, period = 86400 }

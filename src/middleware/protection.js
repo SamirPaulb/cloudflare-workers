@@ -1,11 +1,21 @@
 /**
  * Protection Middleware - Rate limiting and bot detection
  * Protects against abuse while maintaining good UX
- * Uses native Cloudflare Rate Limiting API as first layer,
- * then falls back to KV-based rate limiting
+ * Uses ONLY native Cloudflare Rate Limiting API
+ * No KV operations for rate limiting to avoid hitting KV limits
  */
 
-import { checkNativeGlobalRateLimit, checkNativeBotRateLimit } from '../utils/nativeRateLimit.js';
+import {
+  checkNativeGlobalRateLimit,
+  checkNativeBotRateLimit,
+  checkNativeFormRateLimit,
+  checkNativeAdminRateLimit,
+  checkNativeBurstRateLimit,
+  checkNativeApiRateLimit,
+  checkNativeFormDailyLimit,
+  checkNativeAdminDailyLimit,
+  checkComprehensiveRateLimit
+} from '../utils/nativeRateLimit.js';
 
 /**
  * Check if request is from a bot
@@ -23,22 +33,12 @@ function isBot(request) {
 }
 
 /**
- * Get rate limit key based on IP
- */
-function getRateLimitKey(request, config) {
-  const ip = request.headers.get('cf-connecting-ip') ||
-             request.headers.get('x-forwarded-for') ||
-             'unknown';
-  return `${config.PREFIX_RATELIMIT}global:${ip}`;
-}
-
-/**
  * Protection middleware
  */
 export async function protectRequest(request, env, config) {
   const url = new URL(request.url);
 
-  // Track daily requests
+  // Track daily requests (for statistics, not rate limiting)
   const dailyKey = `stats:daily:${new Date().toISOString().split('T')[0]}`;
   try {
     const current = await env.KV.get(dailyKey);
@@ -66,17 +66,112 @@ export async function protectRequest(request, env, config) {
                    request.headers.get('x-forwarded-for') ||
                    'unknown';
 
-  // FIRST LAYER: Check native global rate limit
-  const nativeGlobalCheck = await checkNativeGlobalRateLimit(request, env);
-  if (!nativeGlobalCheck.allowed) {
-    console.log(`Native global rate limit blocked ${clientIp} on ${url.pathname}`);
-    return new Response(nativeGlobalCheck.reason || 'Rate limit exceeded', {
+  // Check native rate limits based on endpoint type
+  const pathname = url.pathname;
+  let rateCheckResult = null;
+
+  // FIRST: Check burst protection (prevents rapid-fire requests)
+  rateCheckResult = await checkNativeBurstRateLimit(request, env);
+  if (!rateCheckResult.allowed) {
+    console.log(`Burst rate limit blocked ${clientIp} on ${pathname}`);
+    return new Response(rateCheckResult.reason || 'Too many requests in a short time. Please slow down.', {
+      status: 429,
+      headers: {
+        'Retry-After': '10',
+        'Content-Type': 'text/plain'
+      }
+    });
+  }
+
+  // SECOND: Check global rate limit
+  rateCheckResult = await checkNativeGlobalRateLimit(request, env);
+  if (!rateCheckResult.allowed) {
+    console.log(`Native global rate limit blocked ${clientIp} on ${pathname}`);
+    return new Response(rateCheckResult.reason || 'Rate limit exceeded', {
       status: 429,
       headers: {
         'Retry-After': '60',
         'Content-Type': 'text/plain'
       }
     });
+  }
+
+  // THIRD: Check specific endpoint rate limits
+  // API endpoints (form submissions)
+  if (pathname.includes('/api/subscribe') || pathname.includes('/api/unsubscribe') || pathname.includes('/api/contact')) {
+    const formType = pathname.includes('subscribe') ? 'subscribe' :
+                    pathname.includes('unsubscribe') ? 'unsubscribe' : 'contact';
+
+    // Check API rate limit
+    rateCheckResult = await checkNativeApiRateLimit(request, env);
+    if (!rateCheckResult.allowed) {
+      console.log(`API rate limit blocked ${clientIp} on ${pathname}`);
+      return new Response(rateCheckResult.reason || 'API rate limit exceeded', {
+        status: 429,
+        headers: {
+          'Retry-After': '60',
+          'Content-Type': 'text/plain'
+        }
+      });
+    }
+
+    // Check hourly form rate limit
+    rateCheckResult = await checkNativeFormRateLimit(request, env, formType);
+    if (!rateCheckResult.allowed) {
+      console.log(`Native form rate limit blocked ${clientIp} on ${formType} form`);
+      return new Response(rateCheckResult.reason || 'Too many form submissions. Please try again later.', {
+        status: 429,
+        headers: {
+          'Retry-After': '3600', // 1 hour
+          'Content-Type': 'text/plain'
+        }
+      });
+    }
+
+    // Check daily form rate limit (most restrictive)
+    rateCheckResult = await checkNativeFormDailyLimit(request, env, formType);
+    if (!rateCheckResult.allowed) {
+      console.log(`Daily form limit blocked ${clientIp} on ${formType} form`);
+      return new Response(rateCheckResult.reason || 'Daily submission limit reached. Please try again tomorrow.', {
+        status: 429,
+        headers: {
+          'Retry-After': '86400', // 24 hours
+          'Content-Type': 'text/plain'
+        }
+      });
+    }
+  }
+
+  // Admin endpoints
+  if (pathname.startsWith('/admin')) {
+    const endpoint = pathname.split('/').filter(x => x).join('-'); // e.g., "admin-api-check-now"
+
+    // Check hourly admin rate limit
+    rateCheckResult = await checkNativeAdminRateLimit(request, env, endpoint);
+    if (!rateCheckResult.allowed) {
+      console.log(`Native admin rate limit blocked ${clientIp} on ${endpoint}`);
+      // Show Turnstile challenge for admin rate limits
+      return showTurnstileChallenge(config);
+    }
+
+    // Check daily admin rate limit
+    rateCheckResult = await checkNativeAdminDailyLimit(request, env);
+    if (!rateCheckResult.allowed) {
+      console.log(`Daily admin limit blocked ${clientIp}`);
+      return new Response('Daily admin access limit reached. Please try again tomorrow.', {
+        status: 429,
+        headers: {
+          'Retry-After': '86400', // 24 hours
+          'Content-Type': 'text/plain'
+        }
+      });
+    }
+  }
+
+  // Regular page rate limiting (subscribe, unsubscribe, contact pages)
+  if (pathname === '/subscribe' || pathname === '/unsubscribe' || pathname === '/contact') {
+    // These pages can be accessed more frequently than API submissions
+    // Global and burst limits already applied above
   }
 
   // Check if it's a bot
@@ -91,7 +186,7 @@ export async function protectRequest(request, env, config) {
       });
     }
 
-    // Log bot activity
+    // Log bot activity (for monitoring, not rate limiting)
     await env.KV.put(
       `${config.PREFIX_BOT_DETECT}${clientIp}:${Date.now()}`,
       JSON.stringify({
@@ -113,53 +208,7 @@ export async function protectRequest(request, env, config) {
     }
   }
 
-  // SECOND LAYER: KV-based sliding window rate limiting (if native passes)
-  const rateLimitKey = getRateLimitKey(request, config);
-  const now = Date.now();
-  const windowMs = config.GLOBAL_RATE_LIMIT_WINDOW_MS;
-  const maxRequests = config.GLOBAL_RATE_LIMIT_PER_MINUTE;
-
-  // Get existing request timestamps
-  const existingData = await env.KV.get(rateLimitKey);
-  let timestamps = existingData ? JSON.parse(existingData) : [];
-
-  // Remove old timestamps outside the window
-  timestamps = timestamps.filter(ts => now - ts < windowMs);
-
-  // Check if rate limit exceeded
-  if (timestamps.length >= maxRequests) {
-    // Check if this IP is repeatedly hitting rate limits
-    const abuseKey = `${config.PREFIX_RATELIMIT}abuse:${clientIp}`;
-    const abuseCount = await env.KV.get(abuseKey);
-    const newAbuseCount = (parseInt(abuseCount) || 0) + 1;
-
-    await env.KV.put(abuseKey, String(newAbuseCount), {
-      expirationTtl: config.TTL_ABUSE_COUNTER // Use config for 1 hour TTL
-    });
-
-    // If repeated abuse, show Turnstile challenge
-    if (newAbuseCount > config.ABUSE_THRESHOLD) {
-      return showTurnstileChallenge(config);
-    }
-
-    return new Response('Rate limit exceeded. Please try again later.', {
-      status: 429,
-      headers: {
-        'Retry-After': '60',
-        'Content-Type': 'text/plain'
-      }
-    });
-  }
-
-  // Add current timestamp
-  timestamps.push(now);
-
-  // Store updated timestamps
-  await env.KV.put(rateLimitKey, JSON.stringify(timestamps), {
-    expirationTtl: config.TTL_RATE_LIMIT // Use config for 2 minutes TTL
-  });
-
-  // Check for suspicious patterns
+  // Check for suspicious patterns (monitoring, not rate limiting)
   const suspiciousPatterns = await checkSuspiciousActivity(env, config, clientIp, url.pathname);
   if (suspiciousPatterns) {
     return showTurnstileChallenge(config);
@@ -169,25 +218,24 @@ export async function protectRequest(request, env, config) {
 }
 
 /**
- * Check for suspicious activity patterns
+ * Check for suspicious activity patterns (monitoring only, no KV rate limiting)
  */
 async function checkSuspiciousActivity(env, config, clientIp, pathname) {
-  // Check if accessing sensitive endpoints repeatedly
-  const sensitiveEndpoints = ['/api/', '/admin', '/wp-admin', '/.env', '/config'];
+  // Check if accessing sensitive endpoints that should not exist
+  const honeypotEndpoints = ['/wp-admin', '/.env', '/config.php', '/.git', '/admin.php', '/wp-login.php'];
 
-  for (const endpoint of sensitiveEndpoints) {
+  for (const endpoint of honeypotEndpoints) {
     if (pathname.includes(endpoint)) {
-      const suspiciousKey = `${config.PREFIX_BOT}suspicious:${clientIp}`;
-      const count = await env.KV.get(suspiciousKey);
-      const newCount = (parseInt(count) || 0) + 1;
-
-      await env.KV.put(suspiciousKey, String(newCount), {
-        expirationTtl: config.TTL_SUSPICIOUS_ACTIVITY // Use config for 1 hour TTL
-      });
-
-      if (newCount > config.SUSPICIOUS_ACTIVITY_THRESHOLD) {
-        return true; // Suspicious activity detected
-      }
+      // Log suspicious activity for monitoring
+      await env.KV.put(
+        `${config.PREFIX_BOT}suspicious:${clientIp}:${Date.now()}`,
+        JSON.stringify({
+          path: pathname,
+          timestamp: new Date().toISOString()
+        }),
+        { expirationTtl: config.TTL_SUSPICIOUS_ACTIVITY }
+      );
+      return true; // Suspicious activity detected - show Turnstile
     }
   }
 
