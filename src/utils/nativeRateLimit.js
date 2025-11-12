@@ -15,8 +15,12 @@ import { getClientIp } from './validation.js';
 export async function checkNativeGlobalRateLimit(request, env) {
   try {
     if (!env.GLOBAL_RATE_LIMITER) {
-      // Native rate limiter not configured, allow through
-      return { allowed: true };
+      // Native rate limiter not configured - this is a critical security issue
+      console.error('CRITICAL: GLOBAL_RATE_LIMITER not configured - blocking request for security');
+      return {
+        allowed: false,
+        reason: 'Rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -54,7 +58,11 @@ export async function checkNativeGlobalRateLimit(request, env) {
 export async function checkNativeFormRateLimit(request, env, formType) {
   try {
     if (!env.FORM_RATE_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: FORM_RATE_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'Form rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -89,7 +97,11 @@ export async function checkNativeFormRateLimit(request, env, formType) {
 export async function checkNativeAdminRateLimit(request, env, endpoint) {
   try {
     if (!env.ADMIN_RATE_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: ADMIN_RATE_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'Admin rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -123,7 +135,11 @@ export async function checkNativeAdminRateLimit(request, env, endpoint) {
 export async function checkNativeBotRateLimit(request, env) {
   try {
     if (!env.BOT_RATE_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: BOT_RATE_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'Bot rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -154,7 +170,11 @@ export async function checkNativeBotRateLimit(request, env) {
 export async function checkNativeNewsletterCheckLimit(request, env) {
   try {
     if (!env.NEWSLETTER_CHECK_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: NEWSLETTER_CHECK_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'Newsletter check limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -185,7 +205,11 @@ export async function checkNativeNewsletterCheckLimit(request, env) {
 export async function checkNativeApiRateLimit(request, env) {
   try {
     if (!env.API_RATE_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: API_RATE_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'API rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);
@@ -218,7 +242,11 @@ export async function checkNativeApiRateLimit(request, env) {
 export async function checkNativeBurstRateLimit(request, env) {
   try {
     if (!env.BURST_RATE_LIMITER) {
-      return { allowed: true };
+      console.error('CRITICAL: BURST_RATE_LIMITER not configured - blocking for security');
+      return {
+        allowed: false,
+        reason: 'Burst rate limiter not configured - blocking for security'
+      };
     }
 
     const clientIp = getClientIp(request);

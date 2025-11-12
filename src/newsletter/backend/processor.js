@@ -236,7 +236,12 @@ async function processQueueBatch(env, config, queueKey, queue) {
     const offset = queue.sentTo.length;
     const total = Array.isArray(queue.subscribers) ? queue.subscribers.length : 0;
 
-    if (!total || offset >= total) {
+    // Calculate total processed (sent + failed) for early check
+    const alreadyProcessed = queue.sentTo.length + (queue.failedRecipients?.length || 0);
+
+    // Check if all recipients have been processed (either sent or failed)
+    if (!total || alreadyProcessed >= total) {
+      console.log(`All recipients processed. Sent: ${queue.sentTo.length}, Failed: ${queue.failedRecipients?.length || 0}`);
       await finalizeQueue(env, config, queueKey, queue);
       return { success: true, completed: true };
     }
@@ -285,8 +290,8 @@ async function processQueueBatch(env, config, queueKey, queue) {
       if (queue.batchRetryCount >= 3) {
         queue.failedRecipients.push(...nextBatch);
 
-        // Skip these recipients and continue with the rest
-        queue.sentTo.push(...nextBatch); // Mark as "processed" even though failed
+        // DO NOT mark failed recipients as sent - this was causing the bug!
+        // queue.sentTo.push(...nextBatch); // REMOVED - Don't mark failed as sent
 
         // Reset retry count for next batch
         queue.batchRetryCount = 0;
@@ -319,8 +324,9 @@ async function processQueueBatch(env, config, queueKey, queue) {
       }
 
       // Handle partial failures
-      if (sentResult.totalFailed > 0) {
-        const failedRecipients = nextBatch.slice(sentResult.totalSent);
+      if (sentResult.totalFailed > 0 && sentResult.totalSent !== undefined) {
+        // Only slice if totalSent is defined to avoid slice(undefined)
+        const failedRecipients = nextBatch.slice(sentResult.totalSent || 0);
         queue.failedRecipients.push(...failedRecipients);
         console.log(`Partial batch failure: ${sentResult.totalFailed} recipients failed`);
       }
@@ -332,13 +338,17 @@ async function processQueueBatch(env, config, queueKey, queue) {
     // Reset batch retry count on success
     queue.batchRetryCount = 0;
 
-    queue.status = queue.sentTo.length >= total ? 'completed' : 'in-progress';
+    // Calculate total processed (sent + failed)
+    const totalProcessed = queue.sentTo.length + (queue.failedRecipients?.length || 0);
+
+    // Mark as completed when all recipients have been processed (either sent or failed)
+    queue.status = totalProcessed >= total ? 'completed' : 'in-progress';
     queue.lastBatchSentAt = new Date().toISOString();
     queue.stats = {
       total: total,
       sent: queue.sentTo.length,
       failed: (queue.failedRecipients || []).length,
-      remaining: total - queue.sentTo.length
+      remaining: total - totalProcessed
     };
 
     if (queue.status !== 'completed') {
@@ -347,6 +357,9 @@ async function processQueueBatch(env, config, queueKey, queue) {
     }
 
     if (queue.status === 'completed') {
+      // IMPORTANT: Always finalize queue when all recipients are processed
+      // This creates the KV pairs that prevent duplicate sends
+      console.log(`Queue completed! Sent: ${queue.stats.sent}, Failed: ${queue.stats.failed}`);
       await finalizeQueue(env, config, queueKey, queue);
     } else {
       await env.KV.put(queueKey, JSON.stringify(queue));
@@ -489,16 +502,3 @@ function postIdFromNormalizedUrl(normUrl) {
   }
 }
 
-/**
- * Fetch with timeout
- */
-async function fetchWithTimeout(resource, options = {}, ms = 30000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort('timeout'), ms);
-
-  try {
-    return await fetch(resource, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(id);
-  }
-}

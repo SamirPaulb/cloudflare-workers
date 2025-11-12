@@ -557,7 +557,7 @@ async function handleScheduled(event, env, ctx) {
     // Check for newsletters (lightweight)
     const lastNewsletterCheck = await env.KV.get(`${config.KEEP_PREFIX_DAILY}lastNewsletterCheck`);
 
-    if (!lastNewsletterCheck || (now - new Date(lastNewsletterCheck)) > 60 * 60 * 1000) {
+    if (!lastNewsletterCheck || (now.getTime() - new Date(lastNewsletterCheck).getTime()) > 60 * 60 * 1000) {
       // Run newsletter check if it's been more than an hour
       await env.KV.put(`${config.KEEP_PREFIX_DAILY}lastNewsletterCheck`, now.toISOString());
 

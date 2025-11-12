@@ -403,9 +403,13 @@ export async function resilientFetch(url, options = {}, config = {}) {
     }, retryConfig);
   };
 
-  if (circuitBreaker) {
-    return await circuitBreaker.execute(execute);
+  try {
+    if (circuitBreaker) {
+      return await circuitBreaker.execute(execute);
+    }
+    return await execute();
+  } catch (error) {
+    console.error('Resilient fetch failed:', error.message);
+    throw error;
   }
-
-  return await execute();
 }

@@ -322,13 +322,15 @@ function decodeHtmlEntities(text) {
   };
 
   let decoded = text;
+
+  // Decode numeric entities FIRST to avoid double-decoding
+  decoded = decoded.replace(/&#(\d+);/g, (match, num) => String.fromCharCode(parseInt(num)));
+  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+  // Then decode named entities
   for (const [entity, char] of Object.entries(entities)) {
     decoded = decoded.replace(new RegExp(entity, 'gi'), char);
   }
-
-  // Decode numeric entities
-  decoded = decoded.replace(/&#(\d+);/g, (match, num) => String.fromCharCode(parseInt(num)));
-  decoded = decoded.replace(/&#x([0-9a-f]+);/gi, (match, hex) => String.fromCharCode(parseInt(hex, 16)));
 
   return decoded;
 }

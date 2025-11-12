@@ -199,9 +199,9 @@ export class EmailFactory {
             <h1>📬 ${config.EMAIL_FROM_NAME || 'Newsletter'}</h1>
         </div>
         <div class="content">
-            <h2>New Post: ${escapeHtml(post.title)}</h2>
+            <h2>New Post: <a href="${escapeHtml(post.url)}" style="text-decoration: underline;">${escapeHtml(post.title)}</a></h2>
             <p>Thank you for subscribing and reading!</p>
-            <p>A new blog post has been published. Click the button below to read it.</p>
+            <p>A new blog post has been published. Click the title above or the button below to read it.</p>
             <div class="button-container">
                 <a href="${escapeHtml(post.url)}" class="button" style="color: white !important; text-decoration: none;">Read Now →</a>
             </div>
@@ -234,7 +234,7 @@ export class EmailFactory {
         return `${config.EMAIL_FROM_NAME || 'Newsletter'}
 =====================================
 
-${sanitizeInput(post.title)}
+New Post: ${sanitizeInput(post.title)}
 
 ${sanitizeInput(post.description) || 'We\'ve published a new article that we think you\'ll find interesting.'}
 
