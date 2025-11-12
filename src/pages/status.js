@@ -41,7 +41,7 @@ export async function handleStatus(request, env, config) {
         return new Response(renderStatusPage(config, statusData, true), {
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
-            'Set-Cookie': `status-verified=true; Max-Age=300; Path=/admin/status; HttpOnly; Secure; SameSite=Strict`
+            'Set-Cookie': `status-verified=true; Max-Age=${config.STATUS_PAGE_COOKIE_TTL || 300}; Path=/admin/status; HttpOnly; Secure; SameSite=Strict`
           }
         });
       }
@@ -100,17 +100,14 @@ async function getStatusData(env, config) {
     todaySignups: 0,
 
     // Last operations
-    lastBackup: null,
-    backupSize: null,
     lastNewsletter: null,
     lastNewsletterTitle: null,
     lastNewsletterUrl: null,
-    lastCleanup: null,
     lastRssFetch: null,
 
     // System
     systemHealth: 'Operational',
-    workerVersion: '2.0.0',
+    workerVersion: config.WORKER_VERSION || '2.0.0',
     uptime: null,
     responseTime: 'Fast',
     errorRate: '0%'
@@ -211,19 +208,6 @@ async function getStatusData(env, config) {
     }
     status.activeQueues = queueCount;
 
-    // Get last backup info with size
-    const lastBackup = await env.KV.get(`${config.KEEP_PREFIX_MAINTENANCE}backup`);
-    if (lastBackup) {
-      const backup = JSON.parse(lastBackup);
-      status.lastBackup = new Date(backup.timestamp).toLocaleString();
-
-      // Calculate backup size
-      if (backup.results) {
-        const subscriberBackupSize = backup.results.subscribers?.count || 0;
-        const contactBackupSize = backup.results.contacts?.count || 0;
-        status.backupSize = `${subscriberBackupSize + contactBackupSize} records`;
-      }
-    }
 
     // Get last newsletter sent with details
     const lastDaily = await env.KV.get(`${config.KEEP_PREFIX_DAILY}run`);
@@ -232,30 +216,45 @@ async function getStatusData(env, config) {
       status.lastRssFetch = new Date(daily.timestamp).toLocaleString();
     }
 
-    // Get last sent newsletter details
+    // Get last sent newsletter details - iterate through all to find the most recent
+    let mostRecentNewsletter = null;
+    let mostRecentTime = 0;
     cursor = null;
-    const sentList = await env.KV.list({
-      prefix: config.PREFIX_NEWSLETTER_SENT,
-      limit: 1,
-      cursor
-    });
+    hasMore = true;
 
-    if (sentList && sentList.keys && sentList.keys.length > 0) {
-      const lastSentData = await env.KV.get(sentList.keys[0].name);
-      if (lastSentData) {
-        const sentInfo = JSON.parse(lastSentData);
-        status.lastNewsletter = new Date(sentInfo.sentAt).toLocaleString();
-        status.lastNewsletterTitle = sentInfo.title || 'Untitled';
-        status.lastNewsletterUrl = sentInfo.url || '#';
+    while (hasMore) {
+      const sentList = await env.KV.list({
+        prefix: config.PREFIX_NEWSLETTER_SENT,
+        limit: 100,
+        cursor
+      });
+
+      if (sentList && sentList.keys) {
+        for (const key of sentList.keys) {
+          try {
+            const data = await env.KV.get(key.name);
+            if (data) {
+              const sentInfo = JSON.parse(data);
+              const sentTime = new Date(sentInfo.sentAt || 0).getTime();
+              if (sentTime > mostRecentTime) {
+                mostRecentTime = sentTime;
+                mostRecentNewsletter = sentInfo;
+              }
+            }
+          } catch {}
+        }
       }
+
+      hasMore = sentList && !sentList.list_complete;
+      cursor = sentList?.cursor;
     }
 
-    // Get last cleanup info
-    const lastCleanup = await env.KV.get(`${config.KEEP_PREFIX_MAINTENANCE}cleanup`);
-    if (lastCleanup) {
-      const cleanup = JSON.parse(lastCleanup);
-      status.lastCleanup = new Date(cleanup.timestamp).toLocaleString();
+    if (mostRecentNewsletter) {
+      status.lastNewsletter = new Date(mostRecentNewsletter.sentAt).toLocaleString();
+      status.lastNewsletterTitle = mostRecentNewsletter.title || 'Untitled';
+      status.lastNewsletterUrl = mostRecentNewsletter.url || '#';
     }
+
 
     // Get today's signups (check subscribers added in last 24 hours)
     const now = Date.now();
@@ -729,27 +728,6 @@ function renderStatusPage(config, status, isVerified) {
             </div>
         </div>
 
-        <div class="info-card">
-            <div class="info-title">
-                <span>💾</span>
-                <span>Backup & Maintenance</span>
-            </div>
-
-            <div class="info-item">
-                <span class="info-label">Last Backup</span>
-                <span class="info-value">${status.lastBackup || 'Never'}</span>
-            </div>
-
-            <div class="info-item">
-                <span class="info-label">Backup Size</span>
-                <span class="info-value">${status.backupSize || 'N/A'}</span>
-            </div>
-
-            <div class="info-item">
-                <span class="info-label">Last Cleanup</span>
-                <span class="info-value">${status.lastCleanup || 'Never'}</span>
-            </div>
-        </div>
 
         <div class="info-card">
             <div class="info-title">
@@ -789,7 +767,7 @@ function renderStatusPage(config, status, isVerified) {
 
             <div class="info-item">
                 <span class="info-label">Rate Limiting</span>
-                <span class="info-value">Active (${config.GLOBAL_RATE_LIMIT_PER_MINUTE} req/min)</span>
+                <span class="info-value">Active (Native Cloudflare Rate Limiting)</span>
             </div>
         </div>
 
@@ -815,7 +793,7 @@ function renderStatusPage(config, status, isVerified) {
             </div>
 
             <div class="refresh-info">
-                ${isVerified ? 'Access expires in 5 minutes' : 'Auto-refresh disabled for public view'}
+                ${isVerified ? `Access expires in ${Math.floor((config.STATUS_PAGE_COOKIE_TTL || 300) / 60)} minutes` : 'Auto-refresh disabled for public view'}
             </div>
         </div>
 

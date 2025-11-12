@@ -20,6 +20,9 @@ database_name = "data"
 database_id = "464d1bfc-b757-4e4d-8c91-0013417b1680"
 
 [vars]
+# System Configuration
+WORKER_VERSION = "2.0.0"
+
 # Email Provider Configuration - 'gmail', 'worker-email', or 'mailerlite'
 EMAIL_PROVIDER = "gmail"
 
@@ -141,6 +144,7 @@ GMAIL_TIMEOUT_MS = 30000  # Gmail SMTP timeout in milliseconds
 CACHE_CONTROL_MAX_AGE = 3600  # Cache-Control max-age in seconds
 CORS_MAX_AGE = 86400  # CORS max-age in seconds
 COOKIE_TTL = 3600  # Cookie TTL in seconds
+STATUS_PAGE_COOKIE_TTL = 300  # Status page verification cookie TTL in seconds (5 minutes)
 
 # Workers Logs and Traces
 [observability]
